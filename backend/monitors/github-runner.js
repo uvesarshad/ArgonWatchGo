@@ -6,17 +6,36 @@ class RunnerMonitor {
         this.wsHandler = wsHandler;
         this.config = config;
         this.interval = interval;
-        this.timer = null;
+        this.timeoutId = null;
+        this.isRunning = false;
         this.start();
     }
 
     start() {
-        this.checkStatus();
-        this.timer = setInterval(() => this.checkStatus(), this.interval);
+        if (this.isRunning) return;
+        this.isRunning = true;
+        this.loop();
     }
 
     stop() {
-        if (this.timer) clearInterval(this.timer);
+        this.isRunning = false;
+        if (this.timeoutId) {
+            clearTimeout(this.timeoutId);
+            this.timeoutId = null;
+        }
+    }
+
+    async loop() {
+        if (!this.isRunning) return;
+        
+        const startTime = Date.now();
+        await this.checkStatus();
+        
+        if (!this.isRunning) return;
+        
+        const executionTime = Date.now() - startTime;
+        const delay = Math.max(1000, this.interval - executionTime);
+        this.timeoutId = setTimeout(() => this.loop(), delay);
     }
 
     async checkStatus() {

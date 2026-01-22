@@ -1,17 +1,34 @@
 const fs = require('fs');
 const path = require('path');
+const readline = require('readline');
 
 class HistoricalStorage {
     constructor(config) {
         this.enabled = config.enabled;
         this.retentionDays = config.retentionDays || 7;
         this.dataPath = path.resolve(__dirname, '../../', config.dataPath || '../data');
-        this.dataFile = path.join(this.dataPath, 'metrics.json');
-        this.maxDataPoints = 60 * 60 * 24 * this.retentionDays / 2; // One point every 2 seconds
+        this.dataFile = path.join(this.dataPath, 'metrics.jsonl');
+        // One point every 2 seconds roughly.
+        // We will keep memory usage constrained but disk usage is append-only until rotation.
+        this.maxDataPointsInMemory = 60 * 60 * 24 * this.retentionDays / 2; 
         
+        this.data = {
+            cpu: [],
+            memory: [],
+            network_rx: [],
+            network_tx: [],
+            disk_read: [],
+            disk_write: [],
+            cpu_temp: []
+        };
+        
+        this.writeStream = null;
+
         if (this.enabled) {
             this.ensureDataDirectory();
-            this.loadData();
+            this.loadData().then(() => {
+                this.initWriteStream();
+            });
         }
     }
 
@@ -21,32 +38,51 @@ class HistoricalStorage {
         }
     }
 
-    loadData() {
-        try {
-            if (fs.existsSync(this.dataFile)) {
-                const raw = fs.readFileSync(this.dataFile, 'utf8');
-                this.data = JSON.parse(raw);
-            } else {
-                this.data = {
-                    cpu: [],
-                    memory: [],
-                    network: [],
-                    disk: []
-                };
-            }
-        } catch (e) {
-            console.error('Failed to load historical data:', e);
-            this.data = { cpu: [], memory: [], network: [], disk: [] };
-        }
+    initWriteStream() {
+        // Open file for appending
+        this.writeStream = fs.createWriteStream(this.dataFile, { flags: 'a' });
+        this.writeStream.on('error', (err) => {
+            console.error('Error writing to metrics file:', err);
+        });
     }
 
-    saveData() {
-        if (!this.enabled) return;
-        
+    async loadData() {
         try {
-            fs.writeFileSync(this.dataFile, JSON.stringify(this.data));
+            if (!fs.existsSync(this.dataFile)) {
+                return;
+            }
+
+            const fileStream = fs.createReadStream(this.dataFile);
+            const rl = readline.createInterface({
+                input: fileStream,
+                crlfDelay: Infinity
+            });
+
+            const cutoff = Date.now() - (this.retentionDays * 24 * 60 * 60 * 1000);
+
+            for await (const line of rl) {
+                if (!line.trim()) continue;
+                try {
+                    const record = JSON.parse(line);
+                    // record is { type, timestamp, value }
+                    if (record.timestamp > cutoff) {
+                        if (!this.data[record.type]) {
+                            this.data[record.type] = [];
+                        }
+                        this.data[record.type].push({
+                            timestamp: record.timestamp,
+                            value: record.value
+                        });
+                    }
+                } catch (e) {
+                    // Ignore bad lines
+                }
+            }
+            
+            console.log('Historical data loaded.');
+
         } catch (e) {
-            console.error('Failed to save historical data:', e);
+            console.error('Failed to load historical data:', e);
         }
     }
 
@@ -56,24 +92,24 @@ class HistoricalStorage {
         const timestamp = Date.now();
         const point = { timestamp, value };
 
+        // Update in-memory cache
         if (!this.data[type]) {
             this.data[type] = [];
         }
-
         this.data[type].push(point);
 
-        // Cleanup old data
-        const cutoff = timestamp - (this.retentionDays * 24 * 60 * 60 * 1000);
-        this.data[type] = this.data[type].filter(p => p.timestamp > cutoff);
-
-        // Limit total points
-        if (this.data[type].length > this.maxDataPoints) {
-            this.data[type] = this.data[type].slice(-this.maxDataPoints);
+        // Prune in-memory cache if too large (keep it lightweight)
+        if (this.data[type].length > this.maxDataPointsInMemory) {
+            // Remove oldest 10%
+            const removeCount = Math.floor(this.maxDataPointsInMemory * 0.1);
+            this.data[type].splice(0, removeCount);
         }
 
-        // Save periodically (every 100 points)
-        if (this.data[type].length % 100 === 0) {
-            this.saveData();
+        // Persist to disk asynchronously
+        if (this.writeStream) {
+            const entry = JSON.stringify({ type, ...point }) + '\n';
+            const canWrite = this.writeStream.write(entry);
+            // If buffer is full, we could handle backpressure, but for this volume it's rarely an issue.
         }
     }
 
@@ -100,7 +136,16 @@ class HistoricalStorage {
                 cutoff = now - (60 * 60 * 1000);
         }
 
-        return this.data[type].filter(p => p.timestamp > cutoff);
+        // Use binary search for performance if array is sorted (it is because we append)
+        // For simplicity, findIndex is okay for now, or just filter.
+        // Optimization: Find the first index > cutoff
+        const data = this.data[type];
+        // Simple optimization: check if first element is already within range
+        if (data.length > 0 && data[0].timestamp > cutoff) {
+            return data;
+        }
+        
+        return data.filter(p => p.timestamp > cutoff);
     }
 }
 

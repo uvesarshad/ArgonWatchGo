@@ -10,7 +10,8 @@ class DatabaseMonitor {
         this.interval = config.interval || 30000;
         this.results = new Map();
         this.connections = new Map();
-        this.timer = null;
+        this.timeoutId = null;
+        this.isRunning = false;
 
         if (this.databases.length > 0) {
             this.start();
@@ -18,20 +19,35 @@ class DatabaseMonitor {
     }
 
     start() {
+        if (this.isRunning) return;
+        this.isRunning = true;
         console.log(`🗄️  Starting database monitoring for ${this.databases.length} databases...`);
-        this.checkAll(); // Initial check
-        this.timer = setInterval(() => this.checkAll(), this.interval);
+        this.loop();
     }
 
     stop() {
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
+        this.isRunning = false;
+        if (this.timeoutId) {
+            clearTimeout(this.timeoutId);
+            this.timeoutId = null;
         }
         // Close all connections
         this.connections.forEach((conn, id) => {
             this.closeConnection(id);
         });
+    }
+
+    async loop() {
+        if (!this.isRunning) return;
+
+        const startTime = Date.now();
+        await this.checkAll();
+
+        if (!this.isRunning) return;
+
+        const executionTime = Date.now() - startTime;
+        const delay = Math.max(1000, this.interval - executionTime);
+        this.timeoutId = setTimeout(() => this.loop(), delay);
     }
 
     async checkAll() {

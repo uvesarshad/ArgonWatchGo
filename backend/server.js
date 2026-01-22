@@ -236,13 +236,7 @@ setInterval(() => {
     }
 }, 5000); // Check alerts every 5 seconds
 
-// Store last data from system monitor
-const originalGetData = systemMonitor.getData.bind(systemMonitor);
-systemMonitor.getData = async function () {
-    await originalGetData();
-    // Store reference to last data for alert checking
-    systemMonitor.lastData = arguments[0];
-};
+
 
 try {
     const Pm2Monitor = require('./monitors/pm2');
