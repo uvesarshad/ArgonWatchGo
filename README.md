@@ -49,7 +49,7 @@ A lightweight, self-hostable server monitoring tool with comprehensive metrics a
 
 ### ⚡ **Service & Database Monitoring**
 - **Services**: HTTP, TCP, Ping, and Process checks
-- **Databases**: MongoDB, PostgreSQL, MySQL, Redis connection checks
+- **Databases**: Comprehensive monitoring for **MongoDB**, **MySQL**, **PostgreSQL**, and **Redis** (connections, ops/sec, memory, cache hits, etc.). See [Database Monitoring Docs](docs/DATABASE_MONITORING.md).
 
 ### 🔐 **Authentication & Security**
 - **Login panel** with username/password authentication

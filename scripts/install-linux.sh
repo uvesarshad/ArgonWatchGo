@@ -22,7 +22,7 @@ CONFIG_DIR="/etc/argon-watch-go"
 DATA_DIR="/var/lib/argon-watch-go/data"
 SERVICE_FILE="/etc/systemd/system/argon-watch-go.service"
 BINARY_NAME="argon-watch-go"
-DOWNLOAD_URL="https://github.com/YOUR_REPO/releases/latest/download/argon-watch-go-linux"
+DOWNLOAD_URL="https://github.com/montr-studio/ArgonWatchGo/releases/latest/download/argon-watch-go-linux"
 
 # Create directories
 echo "Creating directories..."
@@ -43,10 +43,18 @@ fi
 # Make binary executable
 chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
+# Generate random JWT secret
+echo "Generating secure JWT secret..."
+if command -v openssl &> /dev/null; then
+    JWT_SECRET=$(openssl rand -base64 32)
+else
+    JWT_SECRET=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+fi
+
 # Create default config if it doesn't exist
 if [ ! -f "$CONFIG_DIR/config.json" ]; then
     echo "Creating default configuration..."
-    cat > "$CONFIG_DIR/config.json" <<'EOF'
+    cat > "$CONFIG_DIR/config.json" <<EOF
 {
   "server": {
     "port": 3000,
@@ -65,7 +73,7 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
   },
   "auth": {
     "enabled": true,
-    "jwtSecret": "CHANGE-THIS-TO-A-SECURE-RANDOM-SECRET-KEY",
+    "jwtSecret": "${JWT_SECRET}",
     "tokenExpiration": 24,
     "usersFile": "/var/lib/argon-watch-go/data/users.json"
   },
@@ -109,7 +117,6 @@ if [ ! -f "$CONFIG_DIR/config.json" ]; then
   "quickCommands": []
 }
 EOF
-    echo "⚠️  IMPORTANT: Edit $CONFIG_DIR/config.json and change the jwtSecret!"
 fi
 
 # Create systemd service
