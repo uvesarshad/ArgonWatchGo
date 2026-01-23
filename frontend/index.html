@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Monitor</title>
+    <title>ArgonWatchGo - Server Monitor</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -12,6 +12,7 @@
         rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/graph-tabs.css">
+    <link rel="stylesheet" href="css/graphs-grid.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 
@@ -25,7 +26,7 @@
                         stroke="currentColor" stroke-width="2" />
                     <path d="M12 6V12L16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                 </svg>
-                <span>ServerMonitor</span>
+                <span>ArgonWatchGo</span>
             </div>
             <div class="header-actions">
                 <div class="connection-status" id="connection-status">
@@ -317,15 +318,33 @@
             <section class="card graphs-card">
                 <div class="card-header">
                     <h2>📈 Historical Data</h2>
-                    <div class="graph-tabs">
-                        <button class="graph-tab active" data-graph="cpu">CPU</button>
-                        <button class="graph-tab" data-graph="memory">Memory</button>
-                        <button class="graph-tab" data-graph="network">Network</button>
-                        <button class="graph-tab" data-graph="temperature">Temperature</button>
+                    <div class="time-range-selector">
+                        <label for="time-range">Time Range:</label>
+                        <select id="time-range" class="time-range-dropdown">
+                            <option value="60">Last 1 Hour</option>
+                            <option value="120">Last 2 Hours</option>
+                            <option value="180">Last 3 Hours</option>
+                            <option value="360">Last 6 Hours</option>
+                        </select>
                     </div>
                 </div>
-                <div class="graph-container">
-                    <canvas id="history-chart" style="height: 300px;"></canvas>
+                <div class="graphs-grid">
+                    <div class="graph-item">
+                        <h3 class="graph-title">CPU Usage</h3>
+                        <canvas id="cpu-chart"></canvas>
+                    </div>
+                    <div class="graph-item">
+                        <h3 class="graph-title">Memory Usage</h3>
+                        <canvas id="memory-chart"></canvas>
+                    </div>
+                    <div class="graph-item">
+                        <h3 class="graph-title">Network I/O</h3>
+                        <canvas id="network-chart"></canvas>
+                    </div>
+                    <div class="graph-item">
+                        <h3 class="graph-title">Disk Usage</h3>
+                        <canvas id="disk-chart"></canvas>
+                    </div>
                 </div>
             </section>
 
@@ -404,7 +423,7 @@
                 <a href="#" class="footer-link">Docs</a>
                 <a href="#" class="footer-link">Issues</a>
                 <a href="#" class="footer-link">Contact</a>
-                <span class="footer-copyright">© 2026 ArgonWatch</span>
+                <span class="footer-copyright">© 2026 ArgonWatchGo</span>
             </nav>
         </footer>
     </div>

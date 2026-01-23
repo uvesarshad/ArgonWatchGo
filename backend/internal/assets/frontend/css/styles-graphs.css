@@ -1,0 +1,75 @@
+}
+
+/* === Historical Graphs === */
+.graph-tabs {
+    display: flex;
+    gap: 10px;
+}
+
+.graph-tab {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.graph-tab:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.graph-tab.active {
+    background-color: var(--accent);
+    color: white;
+}
+
+.graph-container {
+    margin-top: 20px;
+    min-height: 300px;
+}
+
+/* === Alerts === */
+.alert-item {
+    padding: 15px;
+    background-color: rgba(255, 255, 255, 0.03);
+    border-left: 4px solid;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.alert-item.critical {
+    border-color: var(--error);
+}
+
+.alert-item.warning {
+    border-color: var(--warning);
+}
+
+.alert-item.info {
+    border-color: var(--accent);
+}
+
+.alert-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.alert-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.alert-time {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.alert-details {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}

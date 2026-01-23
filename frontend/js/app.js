@@ -3,16 +3,16 @@ import { GaugeChart } from './utils/gauge.js';
 
 class App {
     constructor() {
-        this.ws = new WebSocketClient(`ws://${window.location.host}`);
+        this.ws = new WebSocketClient(`ws://${window.location.host}/ws`);
         this.gauges = {};
         this.networkHistory = { rx: 0, tx: 0 };
-        this.currentChart = null;
-        this.currentGraphType = 'cpu';
+        this.charts = {};
+        this.maxDataPoints = 60;
         this.historicalData = {
             cpu: { labels: [], data: [] },
             memory: { labels: [], data: [] },
             network: { labels: [], datasets: [[], []] },
-            temperature: { labels: [], data: [] }
+            disk: { labels: [], data: [] }
         };
         this.init();
     }
@@ -21,7 +21,7 @@ class App {
         this.setupWebSocket();
         this.setupUI();
         this.initializeGauges();
-        this.initializeChart();
+        this.initializeCharts();
     }
 
     initializeGauges() {
@@ -46,6 +46,8 @@ class App {
             if (status === 'connected') {
                 el.classList.add('connected');
                 text.textContent = 'Connected';
+                // Request historical data on connection
+                this.ws.send('GET_HISTORICAL_DATA', { duration: '1h' });
             } else {
                 el.classList.remove('connected');
                 text.textContent = 'Disconnected';
@@ -66,6 +68,10 @@ class App {
 
         this.ws.on('COMMAND_RESULT', (data) => {
             this.handleCommandResult(data);
+        });
+
+        this.ws.on('HISTORICAL_DATA', (data) => {
+            this.loadHistoricalData(data);
         });
     }
 
@@ -138,165 +144,235 @@ class App {
             });
         }
 
-        // Graph tabs
-        const graphTabs = document.querySelectorAll('.graph-tab');
-        graphTabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                // Update active tab
-                graphTabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-
-                // Switch graph
-                this.currentGraphType = tab.dataset.graph;
-                this.updateHistoricalChart();
-            });
-        });
-    }
-
-    initializeChart() {
-        const ctx = document.getElementById('history-chart');
-        if (!ctx) return;
-
-        this.currentChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'CPU Usage (%)',
-                    data: [],
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                },
-                plugins: {
-                    legend: {
-                        display: true,
-                        labels: {
-                            color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary')
+        // Time range selector
+        const timeRangeSelect = document.getElementById('time-range');
+        if (timeRangeSelect) {
+            timeRangeSelect.addEventListener('change', (e) => {
+                this.maxDataPoints = parseInt(e.target.value);
+                // Trim historical data to new max
+                Object.keys(this.historicalData).forEach(key => {
+                    const data = this.historicalData[key];
+                    if (data.labels && data.labels.length > this.maxDataPoints) {
+                        const excess = data.labels.length - this.maxDataPoints;
+                        data.labels.splice(0, excess);
+                        if (data.data) {
+                            data.data.splice(0, excess);
+                        }
+                        if (data.datasets) {
+                            data.datasets.forEach(dataset => dataset.splice(0, excess));
                         }
                     }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary')
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
+                });
+                this.updateAllCharts();
+            });
+        }
+    }
+
+    initializeCharts() {
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                        font: { size: 10 }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary'),
+                        font: { size: 10 }
                     },
-                    x: {
-                        ticks: {
-                            color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary'),
-                            maxRotation: 0,
-                            maxTicksLimit: 10
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary'),
+                        maxRotation: 0,
+                        maxTicksLimit: 6,
+                        font: { size: 9 }
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
                     }
                 }
             }
-        });
-    }
+        };
 
-    updateHistoricalChart() {
-        if (!this.currentChart) return;
-
-        const data = this.historicalData[this.currentGraphType];
-
-        // Update chart based on type
-        switch (this.currentGraphType) {
-            case 'cpu':
-                this.currentChart.data.labels = data.labels;
-                this.currentChart.data.datasets = [{
-                    label: 'CPU Usage (%)',
-                    data: data.data,
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    fill: true
-                }];
-                this.currentChart.options.scales.y.max = 100;
-                break;
-
-            case 'memory':
-                this.currentChart.data.labels = data.labels;
-                this.currentChart.data.datasets = [{
-                    label: 'Memory Usage (%)',
-                    data: data.data,
-                    borderColor: '#8b5cf6',
-                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    fill: true
-                }];
-                this.currentChart.options.scales.y.max = 100;
-                break;
-
-            case 'network':
-                this.currentChart.data.labels = data.labels;
-                this.currentChart.data.datasets = [
-                    {
-                        label: 'Download (MB/s)',
-                        data: data.datasets[0],
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        // CPU Chart
+        const cpuCtx = document.getElementById('cpu-chart');
+        if (cpuCtx) {
+            this.charts.cpu = new Chart(cpuCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'CPU %',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
                         borderWidth: 2,
                         tension: 0.4,
                         fill: true
-                    },
-                    {
-                        label: 'Upload (MB/s)',
-                        data: data.datasets[1],
-                        borderColor: '#f59e0b',
-                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true
-                    }
-                ];
-                delete this.currentChart.options.scales.y.max;
-                break;
-
-            case 'temperature':
-                this.currentChart.data.labels = data.labels;
-                this.currentChart.data.datasets = [{
-                    label: 'CPU Temperature (°C)',
-                    data: data.data,
-                    borderColor: '#ef4444',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    fill: true
-                }];
-                this.currentChart.options.scales.y.max = 100;
-                break;
+                    }]
+                },
+                options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100 } } }
+            });
         }
 
-        this.currentChart.update();
+        // Memory Chart
+        const memCtx = document.getElementById('memory-chart');
+        if (memCtx) {
+            this.charts.memory = new Chart(memCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Memory %',
+                        data: [],
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100 } } }
+            });
+        }
+
+        // Network Chart
+        const netCtx = document.getElementById('network-chart');
+        if (netCtx) {
+            this.charts.network = new Chart(netCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Download',
+                            data: [],
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Upload',
+                            data: [],
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+        }
+
+        // Disk Chart
+        const diskCtx = document.getElementById('disk-chart');
+        if (diskCtx) {
+            this.charts.disk = new Chart(diskCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Disk %',
+                        data: [],
+                        borderColor: '#ec4899',
+                        backgroundColor: 'rgba(236, 72, 153, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100 } } }
+            });
+        }
     }
 
-    addHistoricalDataPoint(cpuLoad, memPercent, networkRx, networkTx, cpuTemp) {
+    loadHistoricalData(data) {
+        console.log('Loading historical data:', data);
+
+        // Load CPU data
+        if (data.cpu && data.cpu.length > 0) {
+            this.historicalData.cpu.labels = [];
+            this.historicalData.cpu.data = [];
+            data.cpu.forEach(point => {
+                const time = new Date(point.timestamp).toLocaleTimeString();
+                this.historicalData.cpu.labels.push(time);
+                this.historicalData.cpu.data.push(point.value);
+            });
+        }
+
+        // Load Memory data
+        if (data.memory && data.memory.length > 0) {
+            this.historicalData.memory.labels = [];
+            this.historicalData.memory.data = [];
+            data.memory.forEach(point => {
+                const time = new Date(point.timestamp).toLocaleTimeString();
+                this.historicalData.memory.labels.push(time);
+                this.historicalData.memory.data.push(point.value);
+            });
+        }
+
+        // Update all charts with loaded data
+        this.updateAllCharts();
+    }
+
+    updateAllCharts() {
+        // Update CPU chart
+        if (this.charts.cpu) {
+            this.charts.cpu.data.labels = this.historicalData.cpu.labels;
+            this.charts.cpu.data.datasets[0].data = this.historicalData.cpu.data;
+            this.charts.cpu.update('none');
+        }
+
+        // Update Memory chart
+        if (this.charts.memory) {
+            this.charts.memory.data.labels = this.historicalData.memory.labels;
+            this.charts.memory.data.datasets[0].data = this.historicalData.memory.data;
+            this.charts.memory.update('none');
+        }
+
+        // Update Network chart
+        if (this.charts.network) {
+            this.charts.network.data.labels = this.historicalData.network.labels;
+            this.charts.network.data.datasets[0].data = this.historicalData.network.datasets[0];
+            this.charts.network.data.datasets[1].data = this.historicalData.network.datasets[1];
+            this.charts.network.update('none');
+        }
+
+        // Update Disk chart
+        if (this.charts.disk) {
+            this.charts.disk.data.labels = this.historicalData.disk.labels;
+            this.charts.disk.data.datasets[0].data = this.historicalData.disk.data;
+            this.charts.disk.update('none');
+        }
+    }
+
+    addHistoricalDataPoint(cpuLoad, memPercent, networkRx, networkTx, diskData) {
         const timestamp = new Date().toLocaleTimeString();
-        const maxPoints = 60; // Keep last 60 points
 
         // CPU
         this.historicalData.cpu.labels.push(timestamp);
         this.historicalData.cpu.data.push(cpuLoad);
-        if (this.historicalData.cpu.labels.length > maxPoints) {
+        if (this.historicalData.cpu.labels.length > this.maxDataPoints) {
             this.historicalData.cpu.labels.shift();
             this.historicalData.cpu.data.shift();
         }
@@ -304,7 +380,7 @@ class App {
         // Memory
         this.historicalData.memory.labels.push(timestamp);
         this.historicalData.memory.data.push(memPercent);
-        if (this.historicalData.memory.labels.length > maxPoints) {
+        if (this.historicalData.memory.labels.length > this.maxDataPoints) {
             this.historicalData.memory.labels.shift();
             this.historicalData.memory.data.shift();
         }
@@ -313,24 +389,25 @@ class App {
         this.historicalData.network.labels.push(timestamp);
         this.historicalData.network.datasets[0].push(networkRx);
         this.historicalData.network.datasets[1].push(networkTx);
-        if (this.historicalData.network.labels.length > maxPoints) {
+        if (this.historicalData.network.labels.length > this.maxDataPoints) {
             this.historicalData.network.labels.shift();
             this.historicalData.network.datasets[0].shift();
             this.historicalData.network.datasets[1].shift();
         }
 
-        // Temperature
-        if (cpuTemp !== null) {
-            this.historicalData.temperature.labels.push(timestamp);
-            this.historicalData.temperature.data.push(cpuTemp);
-            if (this.historicalData.temperature.labels.length > maxPoints) {
-                this.historicalData.temperature.labels.shift();
-                this.historicalData.temperature.data.shift();
+        // Disk Usage
+        if (diskData && diskData.length > 0) {
+            const avgDiskUsage = diskData.reduce((sum, d) => sum + d.use, 0) / diskData.length;
+            this.historicalData.disk.labels.push(timestamp);
+            this.historicalData.disk.data.push(Math.round(avgDiskUsage));
+            if (this.historicalData.disk.labels.length > this.maxDataPoints) {
+                this.historicalData.disk.labels.shift();
+                this.historicalData.disk.data.shift();
             }
         }
 
-        // Update current chart
-        this.updateHistoricalChart();
+        // Update all charts
+        this.updateAllCharts();
     }
 
     showModal(title, message, onConfirm) {
@@ -372,7 +449,7 @@ class App {
         // Update RAM gauge
         const ramPercent = Math.round(data.memory.percentage || 0);
         this.gauges.ram.update(ramPercent);
-        const usedGB = (data.memory.active / 1024 / 1024 / 1024).toFixed(1);
+        const usedGB = ((data.memory.used || data.memory.active) / 1024 / 1024 / 1024).toFixed(1);
         const totalGB = (data.memory.total / 1024 / 1024 / 1024).toFixed(1);
         document.getElementById('ram-gauge-value').textContent = `${ramPercent}% (${usedGB}/${totalGB}GB)`;
 
@@ -555,11 +632,8 @@ class App {
         const networkTx = data.network && data.network.length > 0
             ? data.network.reduce((sum, n) => sum + (n.tx_sec || 0), 0) / 1024 / 1024
             : 0;
-        const cpuTemp = data.temperatures && data.temperatures.main !== null
-            ? Math.round(data.temperatures.main)
-            : null;
 
-        this.addHistoricalDataPoint(cpuLoad, memPercent, networkRx, networkTx, cpuTemp);
+        this.addHistoricalDataPoint(cpuLoad, memPercent, networkRx, networkTx, data.disk);
     }
 
     updatePm2Table(processes) {

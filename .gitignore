@@ -1,0 +1,19 @@
+# Environments
+.env
+
+# Go
+backend/argon-watch
+backend/argon-watch.exe
+backend/argon-watch-linux
+
+# Data
+data/
+
+# Logs
+*.log
+
+# Docs & Plans
+OPTIMIZATION_SUMMARY.md
+GO_MIGRATION_PLAN.md
+GIMINI.md
+OPTIMIZATION_SUMMARY.md

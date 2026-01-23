@@ -1,6 +1,8 @@
-# ArgonWatch - Server Monitor
+# ArgonWatchGo - Server Monitor
 
 A lightweight, self-hostable server monitoring tool with comprehensive metrics and minimal resource usage.
+
+**🚀 Now rewritten in Go (Golang) for single-binary deployment and <1% CPU usage!**
 
 ## Features
 
@@ -46,56 +48,50 @@ A lightweight, self-hostable server monitoring tool with comprehensive metrics a
 ### 📊 **PM2 Process Management**
 - View all PM2 processes in a table
 - Monitor status, uptime, restarts, CPU, and memory
-- Quick actions (restart, stop) via GUI buttons
 
-### 🏃 **GitHub Actions Runner Status**
-- Monitor self-hosted runner status (Idle/Active/Offline)
-- View live terminal logs during job execution
-- Track current job and duration
-
-### ⚡ **Quick Commands**
-- Pre-defined command buttons for common tasks
-- Configurable in `config/config.json`
-- Confirmation dialogs for destructive actions
+### ⚡ **Service & Database Monitoring**
+- **Services**: HTTP, TCP, Ping, and Process checks
+- **Databases**: MongoDB, PostgreSQL, MySQL, Redis connection checks
 
 ## Installation
 
 ### Prerequisites
-- Node.js 16+ 
-- PM2 (optional, for PM2 monitoring)
-- GitHub Actions self-hosted runner (optional)
+- None! (The binary contains everything)
+- (Optional) PM2 for process monitoring
 
 ### Setup
 
-1. **Clone or download this repository**
+1. **Download the latest release** for your platform (Windows/Linux).
 
-2. **Install dependencies**
+2. **Create a `config.json`** file (see Configuration section).
+
+3. **Run the executable:**
    ```bash
-   cd backend
-   npm install
+   # Linux
+   ./argon-watch-go-linux
+   
+   # Windows
+   argon-watch-go.exe
    ```
 
-3. **Configure the application**
-   Edit `config/config.json` to match your setup:
-   - Set GitHub runner path and user
-   - Set PM2 user
-   - Configure quick commands
-   - Set authentication token
+4. **Access the dashboard** at `http://localhost:3000`
 
-4. **Start the server**
+## Build from Source
+
+1. **Install Go 1.21+**
+
+2. **Clone the repository**
+
+3. **Build:**
    ```bash
    cd backend
-   npm start
+   go mod tidy
+   go build -o argon-watch-go ./cmd/server
    ```
-
-5. **Access the dashboard**
-   Open your browser to `http://localhost:3000`
 
 ## Configuration
 
-### Basic Configuration
-
-Edit `config/config.json`:
+Edit `config.json`:
 
 ```json
 {
@@ -103,187 +99,49 @@ Edit `config/config.json`:
     "port": 3000,
     "host": "0.0.0.0"
   },
-  "githubRunner": {
-    "runnerPath": "/home/runner/actions-runner",
-    "runnerUser": "runner"
+  "monitoring": {
+    "systemInterval": 2000,
+    "servicesInterval": 30000
   },
-  "pm2": {
-    "pm2User": "root"
-  },
-  "permissions": {
-    "useSudo": false,
-    "runAsUser": "root"
-  }
-}
-```
-
-### Setting Up PM2 Monitoring
-
-**Option 1: PM2 on Same User**
-If PM2 is running under the same user as the monitoring tool:
-```json
-{
-  "pm2": {
-    "pm2User": "your-username"
-  },
-  "permissions": {
-    "useSudo": false
-  }
-}
-```
-
-**Option 2: PM2 on Different User (Requires Sudo)**
-If PM2 is running under a different user:
-
-1. Install PM2 globally:
-   ```bash
-   npm install -g pm2
-   ```
-
-2. Configure sudo access (edit `/etc/sudoers` or create file in `/etc/sudoers.d/`):
-   ```bash
-   # Allow monitoring user to run PM2 commands
-   monitoring-user ALL=(pm2-user) NOPASSWD: /usr/bin/pm2
-   ```
-
-3. Update config:
-   ```json
-   {
-     "pm2": {
-       "pm2User": "pm2-user"
-     },
-     "permissions": {
-       "useSudo": true,
-       "runAsUser": "pm2-user"
-     }
-   }
-   ```
-
-**Option 3: Run Monitoring Tool as Root**
-```bash
-sudo npm start
-```
-
-### Setting Up GitHub Actions Runner Monitoring
-
-**Step 1: Install GitHub Actions Self-Hosted Runner**
-
-1. Go to your GitHub repository → Settings → Actions → Runners → New self-hosted runner
-
-2. Follow GitHub's installation instructions:
-   ```bash
-   # Create a folder
-   mkdir actions-runner && cd actions-runner
-   
-   # Download the latest runner package
-   curl -o actions-runner-linux-x64-2.311.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
-   
-   # Extract the installer
-   tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
-   
-   # Configure the runner
-   ./config.sh --url https://github.com/YOUR_ORG/YOUR_REPO --token YOUR_TOKEN
-   
-   # Install and start the service
-   sudo ./svc.sh install
-   sudo ./svc.sh start
-   ```
-
-**Step 2: Configure Monitoring Tool**
-
-Update `config/config.json` with your runner path:
-
-```json
-{
-  "githubRunner": {
-    "runnerPath": "/home/runner/actions-runner",
-    "logPath": "/home/runner/actions-runner/_diag",
-    "runnerUser": "runner"
-  }
-}
-```
-
-**Step 3: Set Permissions**
-
-If runner is under different user:
-```bash
-# Add monitoring user to runner group
-sudo usermod -a -G runner monitoring-user
-
-# Or run monitoring tool as root
-sudo npm start
-```
-
-**Common Runner Paths:**
-- Default: `/home/runner/actions-runner`
-- Custom: `/opt/actions-runner`
-- User-specific: `/home/YOUR_USER/actions-runner`
-
-### Quick Commands Configuration
-
-Add custom commands in `config/config.json`:
-
-```json
-{
-  "quickCommands": [
+  "services": [
     {
-      "name": "Restart Nginx",
-      "command": "sudo systemctl restart nginx",
-      "requiresConfirmation": true,
-      "description": "Restarts the Nginx web server"
-    },
-    {
-      "name": "Check Disk Space",
-      "command": "df -h",
-      "requiresConfirmation": false,
-      "description": "Shows disk usage"
-    },
-    {
-      "name": "PM2 Restart All",
-      "command": "pm2 restart all",
-      "requiresConfirmation": true,
-      "description": "Restarts all PM2 processes"
+       "name": "My Website",
+       "type": "http",
+       "url": "https://example.com"
     }
-  ]
+  ],
+  "databases": [
+    {
+       "name": "Main DB",
+       "type": "postgres",
+       "host": "localhost",
+       "port": 5432,
+       "user": "postgres",
+       "password": "password",
+       "database": "mydb"
+    }
+  ],
+  "alerts": {
+      "enabled": true,
+      "rules": [
+          {
+              "id": "cpu-high",
+              "metric": "cpu.load",
+              "condition": ">",
+              "threshold": 90,
+              "notifications": ["email", "discord"]
+          }
+      ]
+  }
 }
 ```
 
 ## Resource Usage
 
 - **Memory**: ~10-15MB RAM
-- **CPU**: <2% when idle, <3% under load
-- **Disk**: ~10-50MB (historical data)
-
-## GUI-First Design
-
-This tool is designed to be **non-technical user friendly**:
-- ✅ Visual dashboard with real-time updates
-- ✅ Color-coded status indicators
-- ✅ One-click actions via buttons
-- ✅ No command-line knowledge required
-- ✅ Responsive design for mobile/tablet
-
-## Security
-
-- Token-based authentication (configurable)
-- Can be disabled for local-only deployments
-- Runs with configurable permissions (sudo/root)
-
-## Development
-
-```bash
-# Install dependencies
-cd backend
-npm install
-
-# Start development server
-npm start
-```
+- **CPU**: <1% average load
+- **Disk**: Minimal (append-only logs)
 
 ## License
 
 MIT
-
-## Support
-
-For issues or questions, please open an issue on GitHub.

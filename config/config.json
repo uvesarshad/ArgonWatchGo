@@ -73,7 +73,7 @@
                     "pass": "your-app-password"
                 }
             },
-            "from": "ArgonWatch <alerts@example.com>",
+            "from": "ArgonWatchGo <alerts@example.com>",
             "to": [
                 "admin@example.com"
             ]

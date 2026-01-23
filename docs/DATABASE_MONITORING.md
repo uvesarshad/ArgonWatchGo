@@ -1,6 +1,6 @@
 # Database Monitoring Configuration Examples
 
-ArgonWatch now supports monitoring for **MongoDB**, **MySQL**, **PostgreSQL**, and **Redis** databases!
+ArgonWatchGo now supports monitoring for **MongoDB**, **MySQL**, **PostgreSQL**, and **Redis** databases!
 
 ## Configuration
 
