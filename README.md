@@ -2,8 +2,6 @@
 
 A lightweight, self-hostable server monitoring tool with comprehensive metrics and minimal resource usage.
 
-**🚀 Now rewritten in Go (Golang) for single-binary deployment and <1% CPU usage!**
-
 ## Features
 
 ### ✅ **Enhanced System Resource Monitoring**
