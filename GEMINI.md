@@ -1,1 +1,0 @@
-Note: Do not modify/add/remove code unless I ask or say so.
