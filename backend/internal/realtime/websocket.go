@@ -12,8 +12,6 @@ import (
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		// DEBUG: Allow all origins to rule out CORS issues behind proxy
-		origin := r.Header.Get("Origin")
-		log.Printf("Debug: WebSocket connection attempt from Origin: %s, Host: %s", origin, r.Host)
 		return true
 	},
 }
