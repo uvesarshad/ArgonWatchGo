@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -19,6 +20,10 @@ func Middleware(jwtManager *JWTManager) func(http.Handler) http.Handler {
 			// Extract token from Authorization header or cookie
 			token := extractToken(r)
 			if token == "" {
+				// Only log if it's not a public asset request (reduce noise)
+				if r.URL.Path == "/ws" || strings.HasPrefix(r.URL.Path, "/api/") {
+					// log.Printf("Debug: Auth Middleware - No token found for %s", r.URL.Path)
+				}
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -26,6 +31,7 @@ func Middleware(jwtManager *JWTManager) func(http.Handler) http.Handler {
 			// Validate token
 			claims, err := jwtManager.ValidateToken(token)
 			if err != nil {
+				log.Printf("Debug: Auth Middleware - Invalid token for %s: %v", r.URL.Path, err)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}

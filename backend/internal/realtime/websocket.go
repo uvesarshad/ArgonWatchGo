@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -12,26 +11,10 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
+		// DEBUG: Allow all origins to rule out CORS issues behind proxy
 		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true // No origin header = non-browser client (usually safe)
-		}
-
-		// Allow localhost for development
-		if strings.Contains(origin, "localhost") || strings.Contains(origin, "127.0.0.1") {
-			return true
-		}
-
-		// Strict check: Origin must match Host
-		cleanOrigin := strings.TrimPrefix(origin, "http://")
-		cleanOrigin = strings.TrimPrefix(cleanOrigin, "https://")
-
-		if cleanOrigin == r.Host {
-			return true
-		}
-
-		log.Printf("Security: BLOCKED WebSocket connection from origin %s (Host: %s)", origin, r.Host)
-		return false
+		log.Printf("Debug: WebSocket connection attempt from Origin: %s, Host: %s", origin, r.Host)
+		return true
 	},
 }
 
