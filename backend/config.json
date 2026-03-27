@@ -62,7 +62,7 @@
   },
   "auth": {
     "enabled": true,
-    "jwtSecret": "CHANGE-THIS-TO-A-SECURE-RANDOM-SECRET-KEY",
+    "jwtSecret": "BJ5gXGlPVnOY5tB/cKHNrW4CQMGQcmRm7XqRzef5XCQ=",
     "tokenExpiration": 24,
     "usersFile": "./data/users.json"
   },
