@@ -3,7 +3,8 @@ import { GaugeChart } from './utils/gauge.js';
 
 class App {
     constructor() {
-        this.ws = new WebSocketClient(`ws://${window.location.host}/ws`);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        this.ws = new WebSocketClient(`${protocol}//${window.location.host}/ws`);
         this.gauges = {};
         this.networkHistory = { rx: 0, tx: 0 };
         this.charts = {};
