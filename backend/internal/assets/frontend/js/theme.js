@@ -42,10 +42,37 @@ const ThemeManager = {
     }
 };
 
+// v2 density toggle. Stored separately from theme so light/dark and
+// comfortable/compact are independent axes (a user might want compact in
+// either mode). Read by CSS via [data-density="compact"] on <body>.
+const DensityManager = {
+    init() {
+        const saved = localStorage.getItem('density') || 'comfortable';
+        document.body.dataset.density = saved;
+        this.setupToggle();
+    },
+    setupToggle() {
+        const btn = document.getElementById('density-toggle');
+        if (!btn) return;
+        const updateLabel = () => {
+            btn.setAttribute('aria-pressed', document.body.dataset.density === 'compact' ? 'true' : 'false');
+        };
+        updateLabel();
+        btn.addEventListener('click', () => {
+            const next = document.body.dataset.density === 'compact' ? 'comfortable' : 'compact';
+            document.body.dataset.density = next;
+            localStorage.setItem('density', next);
+            updateLabel();
+        });
+    },
+};
+
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
     ThemeManager.init();
+    DensityManager.init();
 });
 
 // Also expose global for inline calls if needed
 window.ThemeManager = ThemeManager;
+window.DensityManager = DensityManager;

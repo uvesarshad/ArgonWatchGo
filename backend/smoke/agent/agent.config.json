@@ -1,1 +1,0 @@
-{ "hubUrl": "ws://127.0.0.1:13901/agent", "serverId": "a0126d74-30d6-4080-a90e-84762d7993fc", "token": "aw_f88df51a0472079cff920f7b25639514fac0c51252c27d1f46f9e8c2ac2b7fe0", "monitoring": { "systemInterval": 1000, "pm2Interval": 5000, "servicesInterval": 30000 } }

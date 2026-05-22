@@ -27,7 +27,12 @@
       "Bash(echo \"agent pid=$!\")",
       "PowerShell(\"---hub.err---\")",
       "PowerShell(\"---agent.err---\")",
-      "PowerShell(\"---ls---\")"
+      "PowerShell(\"---ls---\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 13903 -ErrorAction SilentlyContinue)",
+      "PowerShell(\"--- out.log ---\")",
+      "PowerShell(\"--- err.log ---\")",
+      "PowerShell(\"--- processes ---\")",
+      "PowerShell(\"--- port check ---\")"
     ]
   }
 }

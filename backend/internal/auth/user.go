@@ -17,15 +17,47 @@ var (
 	ErrUserExists         = errors.New("user already exists")
 )
 
-// User represents a user account
+// User represents a user account.
+//
+// v2 RBAC: every user has a Role. Existing users loaded from disk that
+// predate this field default to RoleAdmin so single-user installs keep
+// working (see UserStore.load — empty Role is auto-promoted).
 type User struct {
 	ID           string    `json:"id"`
 	Username     string    `json:"username"`
 	PasswordHash string    `json:"passwordHash"`
 	TOTPSecret   string    `json:"totpSecret,omitempty"`
 	TOTPEnabled  bool      `json:"totpEnabled"`
+	Role         string    `json:"role,omitempty"`           // "admin" | "operator" | "viewer"
+	AllowedServers []string `json:"allowedServers,omitempty"` // empty = all
 	CreatedAt    time.Time `json:"createdAt"`
 	LastLogin    time.Time `json:"lastLogin,omitempty"`
+}
+
+// Role constants used in JWT claims + middleware checks.
+const (
+	RoleAdmin    = "admin"
+	RoleOperator = "operator"
+	RoleViewer   = "viewer"
+)
+
+// CanOpenTerminal returns true for users allowed to open a PTY against
+// the given server. Admins always allowed; operators allowed unless the
+// server falls outside their allow-list; viewers never allowed.
+func (u *User) CanOpenTerminal(serverID string) bool {
+	if u == nil { return false }
+	if u.Role == RoleViewer { return false }
+	if u.Role == RoleAdmin { return true }
+	if u.Role == RoleOperator {
+		if len(u.AllowedServers) == 0 { return true }
+		for _, id := range u.AllowedServers {
+			if id == serverID { return true }
+		}
+		return false
+	}
+	// Unset role (e.g. legacy user just loaded) — treat as admin so
+	// existing single-user setups don't lock themselves out.
+	return u.Role == ""
 }
 
 // UserStore manages user persistence
@@ -70,10 +102,18 @@ func (s *UserStore) CreateUser(username, password string) (*User, error) {
 		return nil, err
 	}
 
+	// The first user created is always an admin; everyone after defaults
+	// to operator so a fresh install lands on a sane permissions baseline
+	// without forcing the operator into JSON edits.
+	role := RoleOperator
+	if len(s.users) == 0 {
+		role = RoleAdmin
+	}
 	user := &User{
 		ID:           generateID(),
 		Username:     username,
 		PasswordHash: string(hash),
+		Role:         role,
 		CreatedAt:    time.Now(),
 	}
 
@@ -175,6 +215,11 @@ func (s *UserStore) load() error {
 	}
 
 	for _, u := range users {
+		// Backfill: pre-v2 users have no Role. Treat them as admin so an
+		// in-place upgrade doesn't strip permissions from existing accounts.
+		if u.Role == "" {
+			u.Role = RoleAdmin
+		}
 		s.users[u.ID] = u
 	}
 

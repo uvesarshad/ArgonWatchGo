@@ -16,6 +16,7 @@ var (
 type Claims struct {
 	UserID   string `json:"userId"`
 	Username string `json:"username"`
+	Role     string `json:"role,omitempty"` // v2 RBAC; empty token means pre-v2 (treat as admin)
 	jwt.RegisteredClaims
 }
 
@@ -33,11 +34,18 @@ func NewJWTManager(secret string, expirationHours int) *JWTManager {
 	}
 }
 
-// GenerateToken generates a new JWT token for a user
+// GenerateToken generates a new JWT token for a user. The 4-arg form
+// embeds the role; the 3-arg helper exists for callers that don't yet
+// know about RBAC (login flow gets upgraded in handlers.go).
 func (jm *JWTManager) GenerateToken(userID, username string) (string, error) {
+	return jm.GenerateTokenWithRole(userID, username, "")
+}
+
+func (jm *JWTManager) GenerateTokenWithRole(userID, username, role string) (string, error) {
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(jm.expiration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

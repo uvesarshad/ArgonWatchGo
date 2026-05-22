@@ -1,0 +1,138 @@
+/* v2 responsive layer.
+ *
+ * All mobile/tablet adaptations live here in one place so we can reason
+ * about breakpoints without grepping the codebase. Loaded LAST so it
+ * overrides defaults from styles.css and component sheets.
+ *
+ * Breakpoints (single source of truth):
+ *   xs:  ≤ 480px   phones, portrait
+ *   sm:  ≤ 768px   phones landscape / small tablets
+ *   md:  ≤ 1024px  tablets / split-screen desktop
+ *   lg:  ≤ 1440px  laptop
+ *   (no upper bound past 1440 — design tops out there)
+ */
+
+/* ---- ≤ 1024px (md): trim chrome, allow horizontal scroll on tabs. ---- */
+@media (max-width: 1024px) {
+    .app-container {
+        padding: var(--space-4);
+    }
+    .main-header {
+        margin-bottom: var(--space-4);
+        padding: var(--space-3) 0;
+    }
+    .gauges-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+/* ---- ≤ 768px (sm): mobile layout. ---- */
+@media (max-width: 768px) {
+    body {
+        font-size: var(--font-size-md);
+    }
+
+    .app-container {
+        padding: var(--space-3);
+    }
+
+    /* Header collapses: hide the "Restart" label, keep icon-only buttons. */
+    .main-header {
+        flex-wrap: wrap;
+        gap: var(--space-2);
+    }
+    .header-actions {
+        gap: var(--space-2);
+    }
+    #restart-server-btn span,
+    #restart-server-btn {
+        font-size: var(--font-size-sm);
+    }
+    .connection-status .status-text {
+        display: none;
+    }
+
+    /* Server tabs become a scroll-snap strip. */
+    .server-tabs {
+        scroll-snap-type: x mandatory;
+        padding: var(--space-2) var(--space-3);
+        gap: var(--space-1);
+    }
+    .server-tab {
+        scroll-snap-align: start;
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-sm);
+    }
+
+    /* System info header stacks. */
+    .system-info-header {
+        grid-template-columns: 1fr 1fr !important;
+        gap: var(--space-2) !important;
+    }
+
+    /* All gauge / metric grids collapse to single column. */
+    .gauges-grid,
+    .cpu-details-grid,
+    .memory-details,
+    .metrics-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Reduce card pad so vertical scroll isn't punishing. */
+    .card {
+        padding: var(--space-4) !important;
+    }
+    .card-header h2 {
+        font-size: var(--font-size-lg) !important;
+    }
+
+    /* Tables: let them scroll horizontally rather than overflow. */
+    .pm2-table-wrapper,
+    .services-table-wrapper,
+    .databases-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Tap targets: every interactive element gets a minimum 44px hit area. */
+    button,
+    .icon-btn,
+    .server-tab,
+    [role="button"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Overview cards stay 1-col (already set in multi-server.css, but
+       enforce here so density/compact mode doesn't undo it). */
+    .overview-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ---- ≤ 480px (xs): phone portrait. Trim further. ---- */
+@media (max-width: 480px) {
+    .system-info-header {
+        grid-template-columns: 1fr !important;
+    }
+    .logo span {
+        display: none; /* icon-only logo, save horizontal real estate */
+    }
+    #restart-server-btn {
+        /* Icon-only restart on tiny screens. */
+        font-size: 0;
+        padding: var(--space-2);
+    }
+    #restart-server-btn svg {
+        margin: 0;
+    }
+}
+
+/* ---- iOS Safari: respect safe-area on notched devices. ---- */
+@supports (padding: max(0px)) {
+    .app-container {
+        padding-left:  max(var(--space-3), env(safe-area-inset-left));
+        padding-right: max(var(--space-3), env(safe-area-inset-right));
+        padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+    }
+}

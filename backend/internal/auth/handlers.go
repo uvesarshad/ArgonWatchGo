@@ -159,7 +159,7 @@ func (m *Manager) HandleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate token
-	token, err := m.jwtManager.GenerateToken(user.ID, user.Username)
+	token, err := m.jwtManager.GenerateTokenWithRole(user.ID, user.Username, user.Role)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
@@ -206,7 +206,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			// Return temp token for 2FA verification
-			tempToken, err := m.jwtManager.GenerateToken(user.ID, user.Username)
+			tempToken, err := m.jwtManager.GenerateTokenWithRole(user.ID, user.Username, user.Role)
 			if err != nil {
 				http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 				return
@@ -227,7 +227,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	m.userStore.UpdateLastLogin(user.ID)
 
 	// Generate token
-	token, err := m.jwtManager.GenerateToken(user.ID, user.Username)
+	token, err := m.jwtManager.GenerateTokenWithRole(user.ID, user.Username, user.Role)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
@@ -278,7 +278,7 @@ func (m *Manager) HandleVerify2FA(w http.ResponseWriter, r *http.Request) {
 	m.userStore.UpdateLastLogin(user.ID)
 
 	// Generate new token
-	token, err := m.jwtManager.GenerateToken(user.ID, user.Username)
+	token, err := m.jwtManager.GenerateTokenWithRole(user.ID, user.Username, user.Role)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return

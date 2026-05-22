@@ -37,17 +37,54 @@ const (
 	MsgGHRunnerStatus = "GH_RUNNER_STATUS"
 	MsgLogTail        = "LOG_TAIL"
 	MsgTerminalOut    = "TERMINAL_OUTPUT"
+	MsgTerminalExit   = "TERMINAL_EXIT"
 	MsgHeartbeat      = "HEARTBEAT"
 )
 
 // Message types spoken by the hub to agents.
 const (
+	MsgTerminalOpen   = "TERMINAL_OPEN"
 	MsgTerminalIn     = "TERMINAL_INPUT"
 	MsgTerminalResize = "TERMINAL_RESIZE"
+	MsgTerminalClose  = "TERMINAL_CLOSE"
 	MsgExecCommand    = "EXEC_COMMAND"
 	MsgReloadConfig   = "RELOAD_CONFIG"
 	MsgCloseSession   = "CLOSE_SESSION"
 )
+
+// Terminal envelope payload shapes. Stable wire contract between agent
+// and hub; the browser sees these too (relayed by the hub) so future
+// changes are additive only.
+type TerminalOpenPayload struct {
+	SessionID string `json:"sessionId"`
+	Cols      int    `json:"cols,omitempty"`
+	Rows      int    `json:"rows,omitempty"`
+}
+
+// TerminalDataPayload carries raw PTY bytes in either direction. Bytes
+// are sent as base64 in JSON automatically by encoding/json (the field
+// is []byte, which JSON marshals as base64).
+type TerminalDataPayload struct {
+	SessionID string `json:"sessionId"`
+	Data      []byte `json:"data"`
+}
+
+type TerminalResizePayload struct {
+	SessionID string `json:"sessionId"`
+	Cols      int    `json:"cols"`
+	Rows      int    `json:"rows"`
+}
+
+type TerminalClosePayload struct {
+	SessionID string `json:"sessionId"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+type TerminalExitPayload struct {
+	SessionID string `json:"sessionId"`
+	Code      int    `json:"code"`
+	Error     string `json:"error,omitempty"`
+}
 
 // Message types spoken between hub and browser.
 const (

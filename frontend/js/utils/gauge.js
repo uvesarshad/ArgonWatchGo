@@ -1,87 +1,116 @@
-// Gauge chart utility
+// v2 radial gauge: minimal ring + inline sparkline.
+//
+// Replaces the v1 needle-style gauge with something that reads at a glance
+// and gives context about the trend without a separate chart. Constructor
+// signature is preserved (canvasId, { maxValue, color, label }) so the
+// existing app.js call sites work unchanged. The trailing sparkline buffer
+// is kept internal — every draw() call pushes the new value.
+
+const SPARK_POINTS = 40;
+const RING_THICKNESS = 6;       // px, scales with canvas
+const SPARK_HEIGHT_FRAC = 0.18; // sparkline takes the bottom 18% of the canvas
+
 export class GaugeChart {
     constructor(canvasId, options = {}) {
         this.canvas = document.getElementById(canvasId);
+        if (!this.canvas) return;
         this.ctx = this.canvas.getContext('2d');
         this.value = 0;
         this.maxValue = options.maxValue || 100;
         this.label = options.label || '';
         this.color = options.color || '#3b82f6';
+        this.history = [];
 
         this.resize();
+        // Re-render on resize so the gauge stays crisp on rotate.
+        window.addEventListener('resize', () => { this.resize(); this.draw(this.value); });
     }
 
     resize() {
-        const size = this.canvas.offsetWidth;
-        this.canvas.width = size;
-        this.canvas.height = size;
+        // Render at device pixel ratio so the ring stays sharp on HiDPI.
+        const dpr = window.devicePixelRatio || 1;
+        const size = Math.max(this.canvas.offsetWidth, 80);
+        this.canvas.width = size * dpr;
+        this.canvas.height = size * dpr;
+        this.canvas.style.height = size + 'px';
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.cssSize = size;
+    }
+
+    pushHistory(value) {
+        this.history.push(value);
+        if (this.history.length > SPARK_POINTS) this.history.shift();
     }
 
     draw(value) {
-        this.value = Math.min(value, this.maxValue);
+        if (!this.ctx) return;
+        const v = Math.max(0, Math.min(value, this.maxValue));
+        this.value = v;
+        this.pushHistory(v);
+
         const ctx = this.ctx;
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-        const radius = Math.min(centerX, centerY) - 10;
+        const size = this.cssSize;
+        const sparkBand = size * SPARK_HEIGHT_FRAC;
+        const ringArea = size - sparkBand;
+        const cx = size / 2;
+        const cy = ringArea / 2;
+        // Leave a bit of breathing room so the ring doesn't kiss the edge.
+        const radius = Math.min(cx, cy) - RING_THICKNESS - 2;
 
-        // Clear canvas
-        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.clearRect(0, 0, size, size);
 
-        // Background arc
+        // Background ring.
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0.75 * Math.PI, 2.25 * Math.PI);
-        ctx.lineWidth = 15;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.lineWidth = RING_THICKNESS;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.stroke();
 
-        // Value arc
-        const endAngle = 0.75 * Math.PI + (this.value / this.maxValue) * 1.5 * Math.PI;
+        // Foreground ring: starts at top (−90°), sweeps clockwise.
+        const pct = v / this.maxValue;
+        const start = -Math.PI / 2;
+        const end = start + pct * Math.PI * 2;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0.75 * Math.PI, endAngle);
-        ctx.lineWidth = 15;
+        ctx.arc(cx, cy, radius, start, end);
         ctx.lineCap = 'round';
-
-        // Color based on value
-        let color = this.color;
-        if (this.value > 80) color = '#ef4444';
-        else if (this.value > 50) color = '#f59e0b';
-
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = colorFor(v, this.color);
         ctx.stroke();
 
-        // Needle/arm
-        const needleAngle = 0.75 * Math.PI + (this.value / this.maxValue) * 1.5 * Math.PI;
-        const needleLength = radius - 20;
-        const needleX = centerX + Math.cos(needleAngle) * needleLength;
-        const needleY = centerY + Math.sin(needleAngle) * needleLength;
+        // Sparkline along the bottom of the canvas.
+        this.drawSpark(ctx, size, ringArea, sparkBand);
+    }
+
+    drawSpark(ctx, size, top, height) {
+        if (this.history.length < 2) return;
+        const pad = 4;
+        const w = size - pad * 2;
+        const max = this.maxValue || 100;
+        const step = w / (SPARK_POINTS - 1);
+        // Right-align so the latest sample is always at the right edge,
+        // independent of how full the buffer is.
+        const xOffset = pad + (SPARK_POINTS - this.history.length) * step;
 
         ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(needleX, needleY);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = color;
+        for (let i = 0; i < this.history.length; i++) {
+            const x = xOffset + i * step;
+            const y = top + (height - 4) - (this.history[i] / max) * (height - 4);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = colorFor(this.history[this.history.length - 1], this.color);
+        ctx.globalAlpha = 0.7;
         ctx.stroke();
-
-        // Center circle
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius - 25, 0, 2 * Math.PI);
-        ctx.fillStyle = '#1e293b';
-        ctx.fill();
-
-        // Center value text
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = 'bold 24px Inter';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(Math.round(this.value) + '%', centerX, centerY - 5);
-
-        // Label text
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '12px Inter';
-        ctx.fillText(this.label, centerX, centerY + 20);
+        ctx.globalAlpha = 1;
     }
 
     update(value) {
         this.draw(value);
     }
+}
+
+function colorFor(v, accent) {
+    if (v > 85) return '#ef4444';
+    if (v > 70) return '#f59e0b';
+    return accent;
 }

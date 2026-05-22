@@ -1,0 +1,68 @@
+/* v2 terminal panel: xterm.js host + action buttons + mobile keybar. */
+
+.terminal-card {
+    margin-top: var(--space-4, 16px);
+}
+
+.terminal-actions {
+    display: flex;
+    gap: var(--space-2, 8px);
+    margin-bottom: var(--space-3, 12px);
+}
+
+.terminal-status {
+    font-size: var(--font-size-xs, 11px);
+    color: var(--text-secondary, #94a3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.terminal-status[data-kind="ok"]      { color: var(--color-ok, #10b981); }
+.terminal-status[data-kind="warn"]    { color: var(--color-warn, #f59e0b); }
+.terminal-status[data-kind="error"]   { color: var(--color-crit, #ef4444); }
+.terminal-status[data-kind="pending"] { color: var(--color-info, #3b82f6); }
+
+/* xterm renders into this. min-height keeps the panel from collapsing
+   when no session is open; explicit height keeps fit-addon happy. */
+.terminal-host {
+    background: #0b1220;
+    border: 1px solid var(--color-divider, rgba(255, 255, 255, 0.06));
+    border-radius: var(--radius-md, 8px);
+    padding: var(--space-2, 8px);
+    min-height: 360px;
+    height: 360px;
+    overflow: hidden;
+}
+.terminal-host .xterm,
+.terminal-host .xterm-viewport,
+.terminal-host .xterm-screen { height: 100% !important; }
+
+/* Mobile keyboard helpers. Hidden on desktop where a real keyboard
+   exists; surfaces on narrow viewports + touch devices. */
+.terminal-keybar {
+    display: none;
+    flex-wrap: wrap;
+    gap: var(--space-1, 4px);
+    margin-top: var(--space-2, 8px);
+}
+.terminal-keybar button {
+    flex: 1 1 auto;
+    min-width: 44px;
+    min-height: 44px;
+    padding: var(--space-2, 8px);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--color-divider, rgba(255, 255, 255, 0.06));
+    color: var(--text-primary, #f8fafc);
+    border-radius: var(--radius-sm, 4px);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: var(--font-size-sm, 12px);
+}
+.terminal-keybar button:active {
+    background: var(--color-info, #3b82f6);
+    color: white;
+}
+
+/* Show the keybar on touch capable / narrow viewports. */
+@media (max-width: 768px), (hover: none) {
+    .terminal-keybar { display: flex; }
+    .terminal-host { height: 280px; min-height: 280px; }
+}

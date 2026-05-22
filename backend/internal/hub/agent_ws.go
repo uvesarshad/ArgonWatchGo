@@ -23,7 +23,7 @@ var agentUpgrader = websocket.Upgrader{
 // agent ↔ hub WebSocket. Agents connect with ?id=<serverId>&token=<token>;
 // successfully authenticated, every envelope they send is rebroadcast to
 // browser clients via the realtime hub (transparently scoped to their ID).
-func AgentWSHandler(reg *Registry, conns *Connections, rt *realtime.Hub, store *storage.Storage) http.HandlerFunc {
+func AgentWSHandler(reg *Registry, conns *Connections, rt *realtime.Hub, store *storage.Storage, terms *TerminalProxy) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		serverID := r.URL.Query().Get("id")
 		token := r.URL.Query().Get("token")
@@ -86,6 +86,14 @@ func AgentWSHandler(reg *Registry, conns *Connections, rt *realtime.Hub, store *
 				if store != nil {
 					storeRemoteSystemMetrics(store, serverID, env.Payload)
 				}
+			case transport.MsgTerminalOut, transport.MsgTerminalExit:
+				// Terminal output rides the same agent connection as
+				// metrics but routes through the proxy, not the
+				// browser hub fan-out.
+				if terms != nil {
+					terms.DeliverFromAgent(env)
+				}
+				continue
 			}
 
 			// Default: route to browsers as a scoped broadcast.

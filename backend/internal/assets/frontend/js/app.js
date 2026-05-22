@@ -1,6 +1,8 @@
 import { WebSocketClient } from './utils/websocket.js';
 import { GaugeChart } from './utils/gauge.js';
 import { initMultiServer } from './multi-server.js';
+import { enhanceChart, recomputeAnomalies } from './chart-enhancer.js';
+import { initTerminalPanel } from './terminal-panel.js';
 
 class App {
     constructor() {
@@ -318,6 +320,13 @@ class App {
                 options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, max: 100 } } }
             });
         }
+
+        // v2 chart enhancements: range selector, brush-to-zoom, anomaly band.
+        // Idempotent — enhanceChart no-ops if called twice on the same chart.
+        if (this.charts.cpu)     enhanceChart(this.charts.cpu,     { canvasId: 'cpu-chart',     metric: 'cpu',     color: '#3b82f6' });
+        if (this.charts.memory)  enhanceChart(this.charts.memory,  { canvasId: 'memory-chart',  metric: 'memory',  color: '#8b5cf6' });
+        if (this.charts.network) enhanceChart(this.charts.network, { canvasId: 'network-chart', metric: 'network', color: '#10b981' });
+        if (this.charts.disk)    enhanceChart(this.charts.disk,    { canvasId: 'disk-chart',    metric: 'disk',    color: '#ec4899' });
     }
 
     loadHistoricalData(data) {
@@ -354,6 +363,7 @@ class App {
         if (this.charts.cpu) {
             this.charts.cpu.data.labels = this.historicalData.cpu.labels;
             this.charts.cpu.data.datasets[0].data = this.historicalData.cpu.data;
+            recomputeAnomalies(this.charts.cpu);
             this.charts.cpu.update('none');
         }
 
@@ -361,6 +371,7 @@ class App {
         if (this.charts.memory) {
             this.charts.memory.data.labels = this.historicalData.memory.labels;
             this.charts.memory.data.datasets[0].data = this.historicalData.memory.data;
+            recomputeAnomalies(this.charts.memory);
             this.charts.memory.update('none');
         }
 
@@ -369,6 +380,7 @@ class App {
             this.charts.network.data.labels = this.historicalData.network.labels;
             this.charts.network.data.datasets[0].data = this.historicalData.network.datasets[0];
             this.charts.network.data.datasets[1].data = this.historicalData.network.datasets[1];
+            recomputeAnomalies(this.charts.network);
             this.charts.network.update('none');
         }
 
@@ -376,6 +388,7 @@ class App {
         if (this.charts.disk) {
             this.charts.disk.data.labels = this.historicalData.disk.labels;
             this.charts.disk.data.datasets[0].data = this.historicalData.disk.data;
+            recomputeAnomalies(this.charts.disk);
             this.charts.disk.update('none');
         }
     }
@@ -925,4 +938,16 @@ window.app = app;
 // modal; switching servers updates `app.ws.serverFilter` so the legacy
 // dashboard only renders metrics for the active server.
 initMultiServer(app.ws).catch(e => console.error('multi-server init failed', e));
+
+// Phase 3 terminal — xterm.js panel lazy-loads on first open.
+initTerminalPanel();
+
+// PWA service worker. Soft-fails on browsers that don't support it (older
+// Safari, file:// previews). Only registers on http(s) — file:// throws.
+if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .catch((e) => console.warn('SW registration failed', e));
+    });
+}
 

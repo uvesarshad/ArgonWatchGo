@@ -19,14 +19,15 @@ import (
 // args; v2 adds the multi-server registry + connection manager so the
 // helper signature now has enough arguments to deserve a struct.
 type Deps struct {
-	Config      *config.Config
-	Hub         *realtime.Hub
-	Store       *storage.Storage
-	Alerts      *alerts.AlertEngine
-	AuthManager *auth.Manager
-	FrontendFS  fs.FS
-	Registry    *hub.Registry
-	Connections *hub.Connections
+	Config       *config.Config
+	Hub          *realtime.Hub
+	Store        *storage.Storage
+	Alerts       *alerts.AlertEngine
+	AuthManager  *auth.Manager
+	FrontendFS   fs.FS
+	Registry     *hub.Registry
+	Connections  *hub.Connections
+	TerminalProxy *hub.TerminalProxy
 }
 
 func NewRouter(d Deps) *mux.Router {
@@ -50,7 +51,17 @@ func NewRouter(d Deps) *mux.Router {
 
 	// Agent WebSocket: auth is per-agent token (query string), not the
 	// JWT browser session. Lives outside the /api auth subtree.
-	r.Handle("/agent", hub.AgentWSHandler(d.Registry, d.Connections, d.Hub, d.Store))
+	r.Handle("/agent", hub.AgentWSHandler(d.Registry, d.Connections, d.Hub, d.Store, d.TerminalProxy))
+
+	// Terminal browser WS. Auth is via JWT (cookie/header/query) checked
+	// inside the proxy handler — same surface as the agent WS so the
+	// reverse-proxy WebSocket config in the README keeps working.
+	// Terminals are auth-gated by design: refusing to mount when auth
+	// is disabled is the safer default (an unauthenticated PTY on the
+	// open internet would be catastrophic).
+	if d.TerminalProxy != nil && d.AuthManager != nil {
+		r.Handle("/ws/terminal/{id}", d.TerminalProxy.HandleRoute(d.AuthManager.GetJWTManager()))
+	}
 
 	// Install scripts: served unauthenticated because the URL itself
 	// contains the secret (token query param) and is only ever produced
@@ -94,6 +105,13 @@ func mountAPIRoutes(api *mux.Router, d Deps) {
 	v2.HandleFunc("/servers/{id}", deleteServerHandler(d.Registry, d.Connections)).Methods("DELETE")
 	v2.HandleFunc("/servers/{id}/history/{type}", getScopedHistoryHandler(d.Store)).Methods("GET")
 	v2.HandleFunc("/servers/{id}/history", getScopedAllHistoryHandler(d.Store)).Methods("GET")
+
+	// v2 terminal endpoints — require an auth manager so the role check
+	// in the handler has a non-nil JWT claims pipeline.
+	if d.TerminalProxy != nil && d.AuthManager != nil {
+		v2.HandleFunc("/servers/{id}/terminal", mintTerminalSessionHandler(d.TerminalProxy)).Methods("POST")
+		v2.HandleFunc("/terminal/sessions", terminalAuditHandler(d.TerminalProxy, nil)).Methods("GET")
+	}
 }
 
 func getConfigHandler(cfg *config.Config) http.HandlerFunc {

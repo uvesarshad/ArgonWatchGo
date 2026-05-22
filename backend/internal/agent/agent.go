@@ -168,6 +168,20 @@ func runOnce(ctx context.Context, cfg config.AgentConfig, dial string) error {
 	pm2Mon.Start()
 	defer pm2Mon.Stop()
 
+	// Terminal manager: owns every live PTY for this agent process.
+	// Goes through the same single-writer outbound queue as the monitors
+	// so we never race the WS connection.
+	termSend := func(env transport.Envelope) {
+		env.ServerID = cfg.ServerID
+		select {
+		case outbound <- env:
+		default:
+			log.Printf("agent: outbound full, dropped terminal envelope %s", env.Type)
+		}
+	}
+	termMgr := newTerminalManager(cfg.Terminal, cfg.Permissions, termSend)
+	defer termMgr.CloseAll("agent shutdown")
+
 	// Heartbeat tells the hub "I'm alive" + bumps last-seen. 10s is the
 	// spec'd cadence; the hub's read deadline is 60s so we can miss 5+
 	// heartbeats before being marked offline.
@@ -212,8 +226,10 @@ func runOnce(ctx context.Context, cfg config.AgentConfig, dial string) error {
 			return err
 		}
 		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-		// Phase 1: silently drop incoming envelopes. Phase 3 will route
-		// terminal input here.
-		_ = env
+		// Terminal envelopes are the only inbound traffic we handle in
+		// Phase 3. Phase 4+ will fan out to exec / reload-config here.
+		if termMgr.Handle(env) {
+			continue
+		}
 	}
 }

@@ -214,6 +214,7 @@ func main() {
 	// hub still runs but cannot mint/list remote agents.
 	var registry *hub.Registry
 	var connections *hub.Connections
+	var terminalProxy *hub.TerminalProxy
 	if sqliteStore := store.SQLiteStore(); sqliteStore != nil {
 		reg, regErr := hub.NewRegistry(sqliteStore.DB())
 		if regErr != nil {
@@ -221,20 +222,22 @@ func main() {
 		}
 		registry = reg
 		connections = hub.NewConnections(registry)
+		terminalProxy = hub.NewTerminalProxy(connections, sqliteStore.DB())
 	} else {
 		log.Println("⚠️  storage disabled — multi-server registry unavailable")
 	}
 
 	// 12. Setup Router
 	r := api.NewRouter(api.Deps{
-		Config:      cfg,
-		Hub:         realtimeHub,
-		Store:       store,
-		Alerts:      alertEngine,
-		AuthManager: authManager,
-		FrontendFS:  frontendFS,
-		Registry:    registry,
-		Connections: connections,
+		Config:        cfg,
+		Hub:           realtimeHub,
+		Store:         store,
+		Alerts:        alertEngine,
+		AuthManager:   authManager,
+		FrontendFS:    frontendFS,
+		Registry:      registry,
+		Connections:   connections,
+		TerminalProxy: terminalProxy,
 	})
 
 	// Serve static files (CSS, JS, images, etc.)

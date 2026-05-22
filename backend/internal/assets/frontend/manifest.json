@@ -1,0 +1,25 @@
+{
+  "name": "ArgonWatch Server Monitor",
+  "short_name": "ArgonWatch",
+  "description": "Self-hostable multi-server monitoring with browser terminal, GitHub Actions, and AI-assisted diagnosis.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

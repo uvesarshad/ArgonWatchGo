@@ -10,11 +10,24 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
+    <!-- v2 design tokens load FIRST so styles.css and component sheets
+         can consume them. responsive.css loads LAST so its media queries
+         override every component default. -->
+    <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/graph-tabs.css">
     <link rel="stylesheet" href="css/graphs-grid.css">
     <link rel="stylesheet" href="css/multi-server.css">
+    <link rel="stylesheet" href="css/charts-v2.css">
+    <link rel="stylesheet" href="css/terminal.css">
+    <link rel="stylesheet" href="css/responsive.css">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Brush-to-zoom + pan plugin for time-series charts. Phase 2. -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <!-- Session check - must run before page loads -->
     <script src="js/session-check.js"></script>
     <script src="js/theme.js"></script>
@@ -43,6 +56,13 @@
                         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                     </svg>
                     Restart Server
+                </button>
+                <button id="density-toggle" class="icon-btn" title="Toggle density" aria-pressed="false">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
                 </button>
                 <button id="theme-toggle" class="icon-btn">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -504,6 +524,29 @@
                             <!-- Logs go here -->
                         </div>
                     </div>
+                </div>
+            </section>
+            <!-- v2 Terminal panel. Lazy-loaded; xterm.js only fetches when the
+                 user clicks "Open Terminal". RBAC enforced server-side. -->
+            <section class="card terminal-card" id="terminal-card">
+                <div class="card-header">
+                    <h2>🖥️ Terminal</h2>
+                    <span class="terminal-status" id="terminal-status"></span>
+                </div>
+                <div class="terminal-actions">
+                    <button type="button" class="btn-primary" id="terminal-open-btn">Open Terminal</button>
+                    <button type="button" class="btn-secondary" id="terminal-close-btn">Close</button>
+                </div>
+                <div id="terminal-host" class="terminal-host" role="region" aria-label="Interactive terminal"></div>
+                <div id="terminal-keybar" class="terminal-keybar" aria-label="Mobile keyboard helpers">
+                    <button type="button" data-key="tab">Tab</button>
+                    <button type="button" data-key="esc">Esc</button>
+                    <button type="button" data-key="ctrl-c">Ctrl-C</button>
+                    <button type="button" data-key="ctrl-d">Ctrl-D</button>
+                    <button type="button" data-key="up">↑</button>
+                    <button type="button" data-key="down">↓</button>
+                    <button type="button" data-key="left">←</button>
+                    <button type="button" data-key="right">→</button>
                 </div>
             </section>
         </main>
