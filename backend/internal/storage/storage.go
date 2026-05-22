@@ -1,3 +1,11 @@
+// Package storage is the metrics persistence facade. In v2 it delegates to an
+// embedded SQLite database (internal/storage/sqlite). The old JSONL-on-disk
+// log is auto-migrated to SQLite on first launch and then archived to
+// metrics.jsonl.v1.bak so no historical data is lost.
+//
+// Public API (AddDataPoint, GetHistory, GetAllHistory) is preserved so
+// existing callers keep working. New callers should use the scoped methods
+// (AddDataPointScoped, GetHistoryScoped) to target a specific server.
 package storage
 
 import (
@@ -10,184 +18,204 @@ import (
 	"time"
 
 	"argon-watch-go/internal/config"
+	"argon-watch-go/internal/storage/sqlite"
 )
 
-type DataPoint struct {
-	Timestamp int64   `json:"timestamp"`
-	Value     float64 `json:"value"`
-}
+// DataPoint mirrors sqlite.DataPoint so callers can ignore the inner package.
+type DataPoint = sqlite.DataPoint
 
-type LogEntry struct {
-	Type      string  `json:"type"`
-	Timestamp int64   `json:"timestamp"`
-	Value     float64 `json:"value"`
-}
+// LocalServerID is the implicit server ID used for the in-process monitors
+// that ship inside a single-binary hub install. Multi-server agents use
+// their own IDs (set during enrollment, see internal/hub).
+const LocalServerID = "local"
 
 type Storage struct {
-	mu            sync.RWMutex
-	fileMu        sync.Mutex
-	data          map[string][]DataPoint
-	enabled       bool
+	mu       sync.RWMutex
+	store    *sqlite.Store
+	enabled  bool
+	dataPath string
+
 	retentionDays int
-	dataPath      string
-	dataFile      string
-	file          *os.File
 }
 
 func NewStorage(cfg config.StorageConfig) *Storage {
-	// Resolve path
-	// Assuming cfg.DataPath is relative to executable or config?
-	// JS: path.resolve(__dirname, '../../', config.dataPath)
-	// We'll stick to a simple path relative to CWD for now or use absolute if provided
-
 	s := &Storage{
-		data:          make(map[string][]DataPoint),
 		enabled:       cfg.Enabled,
-		retentionDays: cfg.RetentionDays,
 		dataPath:      cfg.DataPath,
-		dataFile:      filepath.Join(cfg.DataPath, "metrics.jsonl"),
+		retentionDays: cfg.RetentionDays,
 	}
 
-	if s.enabled {
-		s.ensureDataDirectory()
-		s.loadData()
-		s.initWriter()
+	if !s.enabled {
+		return s
 	}
+
+	if err := os.MkdirAll(cfg.DataPath, 0755); err != nil {
+		log.Printf("storage: mkdir %s: %v — storage disabled", cfg.DataPath, err)
+		s.enabled = false
+		return s
+	}
+
+	store, err := sqlite.Open(cfg.DataPath, cfg.RetentionDays)
+	if err != nil {
+		log.Printf("storage: sqlite open failed: %v — storage disabled", err)
+		s.enabled = false
+		return s
+	}
+	s.store = store
+
+	// One-shot migration from v1 JSONL log if present.
+	if imported, err := s.importJSONL(); err != nil {
+		log.Printf("storage: JSONL migration failed: %v (continuing — new writes still work)", err)
+	} else if imported > 0 {
+		log.Printf("storage: imported %d data points from metrics.jsonl into SQLite", imported)
+	}
+
+	// Background retention prune. Daily cadence — cheap.
+	go s.pruneLoop()
 
 	return s
 }
 
-func (s *Storage) ensureDataDirectory() {
-	if _, err := os.Stat(s.dataPath); os.IsNotExist(err) {
-		os.MkdirAll(s.dataPath, 0755)
+// AddDataPoint records a metric for the implicit local server. Kept for
+// backward compatibility with the v1 monitors that have no concept of
+// server ID.
+func (s *Storage) AddDataPoint(metricType string, value float64) {
+	s.AddDataPointScoped(LocalServerID, metricType, value)
+}
+
+// AddDataPointScoped records a metric for the named server.
+func (s *Storage) AddDataPointScoped(serverID, metricType string, value float64) {
+	if !s.enabled || s.store == nil {
+		return
+	}
+	if err := s.store.AddDataPoint(serverID, metricType, value); err != nil {
+		// One-off log; do not spam. SQLite errors here usually indicate disk
+		// pressure or a closed DB during shutdown.
+		log.Printf("storage: write %s/%s failed: %v", serverID, metricType, err)
 	}
 }
 
-func (s *Storage) initWriter() {
-	f, err := os.OpenFile(s.dataFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Printf("Error opening metrics file: %v", err)
-		return
-	}
-	s.file = f
+// GetHistory returns local-server history (v1 API).
+func (s *Storage) GetHistory(metricType string, duration string) []DataPoint {
+	return s.GetHistoryScoped(LocalServerID, metricType, duration)
 }
 
-func (s *Storage) loadData() {
-	file, err := os.Open(s.dataFile)
-	if err != nil {
-		// File might not exist yet
-		return
+func (s *Storage) GetHistoryScoped(serverID, metricType, duration string) []DataPoint {
+	if !s.enabled || s.store == nil {
+		return nil
 	}
-	defer file.Close()
+	return s.store.GetHistory(serverID, metricType, duration)
+}
 
-	scanner := bufio.NewScanner(file)
+// GetAllHistory returns local-server history grouped by metric type (v1 API).
+func (s *Storage) GetAllHistory(duration string) map[string][]DataPoint {
+	return s.GetAllHistoryScoped(LocalServerID, duration)
+}
+
+func (s *Storage) GetAllHistoryScoped(serverID, duration string) map[string][]DataPoint {
+	if !s.enabled || s.store == nil {
+		return map[string][]DataPoint{}
+	}
+	return s.store.GetAllHistory(serverID, duration)
+}
+
+// SQLiteStore exposes the underlying handle for callers that need direct
+// access (alerts history, terminal sessions, AI conversations).
+func (s *Storage) SQLiteStore() *sqlite.Store {
+	return s.store
+}
+
+func (s *Storage) Close() error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.Close()
+}
+
+func (s *Storage) pruneLoop() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		if s.store == nil {
+			return
+		}
+		n, err := s.store.PruneOlderThan(s.retentionDays)
+		if err != nil {
+			log.Printf("storage: prune failed: %v", err)
+		} else if n > 0 {
+			log.Printf("storage: pruned %d rows older than %d days", n, s.retentionDays)
+		}
+	}
+}
+
+// importJSONL reads any pre-v2 metrics.jsonl in the data directory and bulk-
+// inserts the rows into SQLite under serverID="local". On success the file
+// is renamed to metrics.jsonl.v1.bak so the import never runs twice.
+//
+// Returns the number of rows inserted (0 if no file or nothing to do).
+func (s *Storage) importJSONL() (int, error) {
+	if s.store == nil {
+		return 0, nil
+	}
+
+	jsonlPath := filepath.Join(s.dataPath, "metrics.jsonl")
+	f, err := os.Open(jsonlPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	defer f.Close()
+
+	type legacyEntry struct {
+		Type      string  `json:"type"`
+		Timestamp int64   `json:"timestamp"`
+		Value     float64 `json:"value"`
+	}
+
 	cutoff := time.Now().AddDate(0, 0, -s.retentionDays).UnixMilli()
 
+	db := s.store.DB()
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO metrics (server_id, type, ts, value) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+	defer stmt.Close()
+
 	count := 0
+	scanner := bufio.NewScanner(f)
+	// Default scanner buffer is 64KB — fine for one JSON line per metric.
 	for scanner.Scan() {
-		var entry LogEntry
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil {
-			if entry.Timestamp > cutoff {
-				s.data[entry.Type] = append(s.data[entry.Type], DataPoint{
-					Timestamp: entry.Timestamp,
-					Value:     entry.Value,
-				})
-				count++
-			}
+		var e legacyEntry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			continue
 		}
-	}
-	log.Printf("Loaded %d historical data points", count)
-}
-
-func (s *Storage) AddDataPoint(metricType string, value float64) {
-	if !s.enabled {
-		return
-	}
-
-	ts := time.Now().UnixMilli()
-	point := DataPoint{Timestamp: ts, Value: value}
-
-	s.mu.Lock()
-	s.data[metricType] = append(s.data[metricType], point)
-
-	// Simple memory pruning (every 1000 items or so? or just check length)
-	// Keep last N items? 7 days * 24h * 60m * 60s / 2s = ~300k items max
-	// Let's cap at 50k for safety per metric for now
-	if len(s.data[metricType]) > 50000 {
-		s.data[metricType] = s.data[metricType][5000:] // Remove oldest 5000
-	}
-	s.mu.Unlock()
-
-	// Async write to file
-	go s.writeToFile(metricType, ts, value)
-}
-
-func (s *Storage) writeToFile(metricType string, ts int64, value float64) {
-	s.fileMu.Lock()
-	defer s.fileMu.Unlock()
-
-	if s.file == nil {
-		return
-	}
-
-	entry := LogEntry{
-		Type:      metricType,
-		Timestamp: ts,
-		Value:     value,
-	}
-
-	bytes, _ := json.Marshal(entry)
-	// Write with newline
-	if _, err := s.file.Write(append(bytes, '\n')); err != nil {
-		log.Printf("Error writing to storage: %v", err)
-	}
-}
-func (s *Storage) GetHistory(metricType string, duration string) []DataPoint {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	points, ok := s.data[metricType]
-	if !ok {
-		return []DataPoint{}
-	}
-
-	// Filter based on duration
-	now := time.Now()
-	var cutoff time.Time
-
-	switch duration {
-	case "1h":
-		cutoff = now.Add(-1 * time.Hour)
-	case "6h":
-		cutoff = now.Add(-6 * time.Hour)
-	case "24h":
-		cutoff = now.Add(-24 * time.Hour)
-	case "7d":
-		cutoff = now.AddDate(0, 0, -7)
-	default:
-		cutoff = now.Add(-1 * time.Hour)
-	}
-
-	cutoffMs := cutoff.UnixMilli()
-
-	// Find index (optimization)
-	// For now linear filter is fine for Go speed
-	var result []DataPoint
-	for _, p := range points {
-		if p.Timestamp > cutoffMs {
-			result = append(result, p)
+		if e.Timestamp <= cutoff {
+			continue
 		}
+		if _, err := stmt.Exec(LocalServerID, e.Type, e.Timestamp, e.Value); err != nil {
+			continue
+		}
+		count++
 	}
-	return result
-}
 
-func (s *Storage) GetAllHistory(duration string) map[string][]DataPoint {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make(map[string][]DataPoint)
-	for metricType := range s.data {
-		result[metricType] = s.GetHistory(metricType, duration)
+	if err := tx.Commit(); err != nil {
+		return 0, err
 	}
-	return result
+
+	// Archive so we don't re-import on the next boot. Close the file handle
+	// first (Windows can't rename an open file).
+	f.Close()
+	backupPath := filepath.Join(s.dataPath, "metrics.jsonl.v1.bak")
+	if err := os.Rename(jsonlPath, backupPath); err != nil {
+		log.Printf("storage: imported JSONL but rename to .v1.bak failed: %v", err)
+	}
+
+	return count, nil
 }

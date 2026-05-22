@@ -32,6 +32,7 @@ body {
     font-family: var(--font-heading);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
 }
 
 /* Light theme */
@@ -48,7 +49,7 @@ body.light-theme .gauge-container canvas {
 }
 
 .app-container {
-    max-width: 1400px;
+    width: min(100%, 1400px);
     margin: 0 auto;
     padding: 20px;
 }
@@ -105,6 +106,10 @@ body.light-theme .gauge-container canvas {
     gap: 20px;
 }
 
+.dashboard-container>* {
+    min-width: 0;
+}
+
 /* System Info Header */
 .system-info-header {
     display: grid;
@@ -143,6 +148,7 @@ body.light-theme .gauge-container canvas {
     border: 1px solid var(--border);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     transition: all 0.3s ease;
+    min-width: 0;
 }
 
 .card:hover {
@@ -197,6 +203,13 @@ body.light-theme .gauge-container canvas {
 .card-header h2 {
     font-size: 1.125rem;
     font-weight: 600;
+}
+
+.card-subtitle {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    max-width: 56ch;
 }
 
 .refresh-rate {
@@ -393,12 +406,15 @@ body.light-theme .gauge-container canvas {
 
 /* Table */
 .table-container {
+    width: 100%;
+    max-width: 100%;
     overflow-x: auto;
 }
 
 .data-table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 640px;
 }
 
 .data-table th,
@@ -406,6 +422,7 @@ body.light-theme .gauge-container canvas {
     padding: 12px;
     text-align: left;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    overflow-wrap: anywhere;
 }
 
 .data-table th {
@@ -426,6 +443,22 @@ body.light-theme .gauge-container canvas {
 }
 
 @media (max-width: 768px) {
+    .app-container {
+        padding: 14px;
+    }
+
+    .main-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
     .gauges-grid {
         grid-template-columns: 1fr;
     }
@@ -436,6 +469,10 @@ body.light-theme .gauge-container canvas {
 
     .commands-grid {
         grid-template-columns: 1fr;
+    }
+
+    .card {
+        padding: 18px;
     }
 }
 

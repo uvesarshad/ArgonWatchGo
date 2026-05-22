@@ -8,64 +8,92 @@ import (
 	"argon-watch-go/internal/alerts"
 	"argon-watch-go/internal/auth"
 	"argon-watch-go/internal/config"
+	"argon-watch-go/internal/hub"
 	"argon-watch-go/internal/realtime"
 	"argon-watch-go/internal/storage"
 
 	"github.com/gorilla/mux"
 )
 
-func NewRouter(cfg *config.Config, hub *realtime.Hub, store *storage.Storage, ae *alerts.AlertEngine, authManager *auth.Manager, frontendFS fs.FS) *mux.Router {
+// Deps groups every dependency the router needs. v1 routes used positional
+// args; v2 adds the multi-server registry + connection manager so the
+// helper signature now has enough arguments to deserve a struct.
+type Deps struct {
+	Config      *config.Config
+	Hub         *realtime.Hub
+	Store       *storage.Storage
+	Alerts      *alerts.AlertEngine
+	AuthManager *auth.Manager
+	FrontendFS  fs.FS
+	Registry    *hub.Registry
+	Connections *hub.Connections
+}
+
+func NewRouter(d Deps) *mux.Router {
 	r := mux.NewRouter()
 
-	// Public auth routes (no authentication required)
+	// Public auth routes
 	authRoutes := r.PathPrefix("/api/auth").Subrouter()
-	authRoutes.HandleFunc("/check-setup", authManager.HandleCheckSetup).Methods("GET")
-	authRoutes.HandleFunc("/setup", authManager.HandleSetup).Methods("POST")
-	authRoutes.HandleFunc("/login", authManager.HandleLogin).Methods("POST")
-	authRoutes.HandleFunc("/verify-2fa", authManager.HandleVerify2FA).Methods("POST")
-	authRoutes.HandleFunc("/logout", authManager.HandleLogout).Methods("POST")
+	authRoutes.HandleFunc("/check-setup", d.AuthManager.HandleCheckSetup).Methods("GET")
+	authRoutes.HandleFunc("/setup", d.AuthManager.HandleSetup).Methods("POST")
+	authRoutes.HandleFunc("/login", d.AuthManager.HandleLogin).Methods("POST")
+	authRoutes.HandleFunc("/verify-2fa", d.AuthManager.HandleVerify2FA).Methods("POST")
+	authRoutes.HandleFunc("/logout", d.AuthManager.HandleLogout).Methods("POST")
 
-	// Serve setup and login pages (public access)
 	r.HandleFunc("/setup", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFileFS(w, r, frontendFS, "setup.html")
+		http.ServeFileFS(w, r, d.FrontendFS, "setup.html")
 	}).Methods("GET")
 
 	r.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFileFS(w, r, frontendFS, "login.html")
+		http.ServeFileFS(w, r, d.FrontendFS, "login.html")
 	}).Methods("GET")
 
-	// Protected routes (authentication required)
-	if cfg.Auth.Enabled {
-		// WebSocket with auth
-		r.Handle("/ws", auth.Middleware(authManager.GetJWTManager())(http.HandlerFunc(hub.ServeWS)))
+	// Agent WebSocket: auth is per-agent token (query string), not the
+	// JWT browser session. Lives outside the /api auth subtree.
+	r.Handle("/agent", hub.AgentWSHandler(d.Registry, d.Connections, d.Hub, d.Store))
 
-		// API Routes with auth
+	// Install scripts: served unauthenticated because the URL itself
+	// contains the secret (token query param) and is only ever produced
+	// by an authenticated /api/v2/servers POST. Treat the URL like a
+	// short-lived bearer.
+	r.HandleFunc("/install.sh", installShHandler()).Methods("GET")
+	r.HandleFunc("/install.ps1", installPs1Handler()).Methods("GET")
+
+	if d.Config.Auth.Enabled {
+		// Browser WS with JWT auth
+		r.Handle("/ws", auth.Middleware(d.AuthManager.GetJWTManager())(http.HandlerFunc(d.Hub.ServeWS)))
+
 		api := r.PathPrefix("/api").Subrouter()
 		api.Use(func(next http.Handler) http.Handler {
-			return auth.Middleware(authManager.GetJWTManager())(next)
+			return auth.Middleware(d.AuthManager.GetJWTManager())(next)
 		})
-
-		api.HandleFunc("/config", getConfigHandler(cfg)).Methods("GET")
-		api.HandleFunc("/history/{type}", getHistoryHandler(store)).Methods("GET")
-		api.HandleFunc("/alerts/active", getAlertsHandler(ae)).Methods("GET")
-		api.HandleFunc("/alerts/history", getAlertHistoryHandler(ae)).Methods("GET")
-
-		// User management routes
-		api.HandleFunc("/auth/me", authManager.HandleGetMe).Methods("GET")
-		api.HandleFunc("/auth/enable-2fa", authManager.HandleEnable2FA).Methods("POST")
-		api.HandleFunc("/auth/disable-2fa", authManager.HandleDisable2FA).Methods("POST")
+		mountAPIRoutes(api, d)
 	} else {
-		// No auth - all routes public
-		r.HandleFunc("/ws", hub.ServeWS)
-
+		r.HandleFunc("/ws", d.Hub.ServeWS)
 		api := r.PathPrefix("/api").Subrouter()
-		api.HandleFunc("/config", getConfigHandler(cfg)).Methods("GET")
-		api.HandleFunc("/history/{type}", getHistoryHandler(store)).Methods("GET")
-		api.HandleFunc("/alerts/active", getAlertsHandler(ae)).Methods("GET")
-		api.HandleFunc("/alerts/history", getAlertHistoryHandler(ae)).Methods("GET")
+		mountAPIRoutes(api, d)
 	}
 
 	return r
+}
+
+func mountAPIRoutes(api *mux.Router, d Deps) {
+	// v1 endpoints (unchanged shape; back-compat for any external consumer)
+	api.HandleFunc("/config", getConfigHandler(d.Config)).Methods("GET")
+	api.HandleFunc("/history/{type}", getHistoryHandler(d.Store)).Methods("GET")
+	api.HandleFunc("/alerts/active", getAlertsHandler(d.Alerts)).Methods("GET")
+	api.HandleFunc("/alerts/history", getAlertHistoryHandler(d.Alerts)).Methods("GET")
+	api.HandleFunc("/auth/me", d.AuthManager.HandleGetMe).Methods("GET")
+	api.HandleFunc("/auth/enable-2fa", d.AuthManager.HandleEnable2FA).Methods("POST")
+	api.HandleFunc("/auth/disable-2fa", d.AuthManager.HandleDisable2FA).Methods("POST")
+
+	// v2 endpoints — multi-server
+	v2 := api.PathPrefix("/v2").Subrouter()
+	v2.HandleFunc("/servers", listServersHandler(d.Registry)).Methods("GET")
+	v2.HandleFunc("/servers", createServerHandler(d.Registry, hubBaseURL)).Methods("POST")
+	v2.HandleFunc("/servers/{id}", deleteServerHandler(d.Registry, d.Connections)).Methods("DELETE")
+	v2.HandleFunc("/servers/{id}/history/{type}", getScopedHistoryHandler(d.Store)).Methods("GET")
+	v2.HandleFunc("/servers/{id}/history", getScopedAllHistoryHandler(d.Store)).Methods("GET")
 }
 
 func getConfigHandler(cfg *config.Config) http.HandlerFunc {
@@ -86,6 +114,35 @@ func getHistoryHandler(store *storage.Storage) http.HandlerFunc {
 
 		data := store.GetHistory(metricType, duration)
 
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(data)
+	}
+}
+
+func getScopedHistoryHandler(store *storage.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID := vars["id"]
+		metricType := vars["type"]
+		duration := r.URL.Query().Get("duration")
+		if duration == "" {
+			duration = "1h"
+		}
+		data := store.GetHistoryScoped(serverID, metricType, duration)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(data)
+	}
+}
+
+func getScopedAllHistoryHandler(store *storage.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		serverID := vars["id"]
+		duration := r.URL.Query().Get("duration")
+		if duration == "" {
+			duration = "1h"
+		}
+		data := store.GetAllHistoryScoped(serverID, duration)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(data)
 	}

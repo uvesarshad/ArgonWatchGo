@@ -1,5 +1,6 @@
 import { WebSocketClient } from './utils/websocket.js';
 import { GaugeChart } from './utils/gauge.js';
+import { initMultiServer } from './multi-server.js';
 
 class App {
     constructor() {
@@ -15,6 +16,12 @@ class App {
             network: { labels: [], datasets: [[], []] },
             disk: { labels: [], data: [] }
         };
+        // Multi-server: tab manager looks for this to set the WS filter.
+        // Default to "local" so single-binary installs behave exactly as
+        // they did in v1.
+        this.currentServerId = 'local';
+        this.ws.setServerFilter(this.currentServerId);
+        window.argonApp = this;
         this.init();
     }
 
@@ -912,4 +919,10 @@ class App {
 const app = new App();
 // Make app global for inline onclick handlers
 window.app = app;
+
+// Wire up the multi-server tab manager once the WS client is initialized.
+// It owns the tab strip, the "All servers" overview, and the add-server
+// modal; switching servers updates `app.ws.serverFilter` so the legacy
+// dashboard only renders metrics for the active server.
+initMultiServer(app.ws).catch(e => console.error('multi-server init failed', e));
 

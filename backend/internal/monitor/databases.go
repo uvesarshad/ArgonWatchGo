@@ -19,9 +19,10 @@ import (
 )
 
 type DatabaseMonitor struct {
+	serverID  string
 	databases []config.DatabaseConfig
 	interval  time.Duration
-	broadcast func(string, interface{})
+	broadcast func(serverID, msgType string, data interface{})
 	stopChan  chan struct{}
 	prevStats map[string]databaseSnapshot
 }
@@ -109,8 +110,9 @@ type postgresDatabaseStats struct {
 	DatabaseBytes int64
 }
 
-func NewDatabaseMonitor(databases []config.DatabaseConfig, interval time.Duration, broadcast func(string, interface{})) *DatabaseMonitor {
+func NewDatabaseMonitor(serverID string, databases []config.DatabaseConfig, interval time.Duration, broadcast func(serverID, msgType string, data interface{})) *DatabaseMonitor {
 	return &DatabaseMonitor{
+		serverID:  serverID,
 		databases: databases,
 		interval:  interval,
 		broadcast: broadcast,
@@ -151,7 +153,7 @@ func (m *DatabaseMonitor) checkAll() {
 	for _, db := range m.databases {
 		results = append(results, m.checkDatabase(db))
 	}
-	m.broadcast("DATABASE_STATUS", results)
+	m.broadcast(m.serverID, "DATABASE_STATUS", results)
 }
 
 func (m *DatabaseMonitor) checkDatabase(db config.DatabaseConfig) DatabaseStatus {

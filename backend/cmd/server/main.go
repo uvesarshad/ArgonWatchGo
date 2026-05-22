@@ -3,25 +3,51 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"argon-watch-go/internal/agent"
 	"argon-watch-go/internal/alerts"
 	"argon-watch-go/internal/api"
 	"argon-watch-go/internal/assets"
 	"argon-watch-go/internal/auth"
 	"argon-watch-go/internal/config"
+	"argon-watch-go/internal/hub"
 	"argon-watch-go/internal/monitor"
 	"argon-watch-go/internal/realtime"
 	"argon-watch-go/internal/storage"
 )
 
+// Mode is the runtime mode. Defaults to "hub" which preserves the v1
+// single-binary behavior (UI + in-process self-agent). "agent" runs as a
+// headless metrics pusher that connects to a remote hub.
+var (
+	modeFlag       = flag.String("mode", "hub", "run mode: hub | agent")
+	configFlag     = flag.String("config", "", "path to config file (defaults: config.json for hub, agent.config.json for agent)")
+	agentHubFlag   = flag.String("hub", "", "hub WSS URL (agent mode)")
+	agentTokenFlag = flag.String("token", "", "agent enrollment token (agent mode)")
+)
+
 func main() {
+	flag.Parse()
+
+	if *modeFlag == "agent" {
+		runAgent()
+		return
+	}
+
+	// Hub mode (default). Loads the v1 single-binary stack; in Phase 1 this
+	// will also start the hub-side agent listener.
+
 	// 1. Load Configuration
 	configPath := "config.json"
+	if *configFlag != "" {
+		configPath = *configFlag
+	}
 
 	// Check if config exists, if not create default
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
@@ -45,11 +71,11 @@ func main() {
 	store := storage.NewStorage(cfg.Storage)
 
 	// 3. Setup Realtime Hub
-	hub := realtime.NewHub()
-	go hub.Run()
+	realtimeHub := realtime.NewHub()
+	go realtimeHub.Run()
 
 	// Setup message handler for incoming WebSocket messages
-	hub.SetMessageHandler(func(client *realtime.Client, msg realtime.Message) {
+	realtimeHub.SetMessageHandler(func(client *realtime.Client, msg realtime.Message) {
 		switch msg.Type {
 		case "GET_HISTORICAL_DATA":
 			// Get duration from message data (default to 1h)
@@ -69,16 +95,20 @@ func main() {
 	})
 
 	// 4. Setup Alerts
-	alertEngine := alerts.NewAlertEngine(cfg.Alerts, cfg.Notifications, hub.Broadcast)
+	alertEngine := alerts.NewAlertEngine(cfg.Alerts, cfg.Notifications, realtimeHub.Broadcast)
 
 	// 5. Setup System Monitor
 	sysInterval := cfg.Monitoring.SystemInterval
 	if sysInterval <= 0 {
 		sysInterval = 2000
 	}
+	// All in-process monitors publish as the implicit local server. When
+	// remote agents land (Phase 1) they push from their own serverID.
+	const localID = realtime.LocalServerID
 	sysMon := monitor.NewSystemMonitor(
+		localID,
 		time.Duration(sysInterval)*time.Millisecond,
-		hub.Broadcast,
+		realtimeHub.BroadcastFor,
 		store,
 		alertEngine,
 	)
@@ -90,9 +120,10 @@ func main() {
 		svcInterval = 30000
 	}
 	svcMon := monitor.NewServiceMonitor(
+		localID,
 		cfg.Services,
 		time.Duration(svcInterval)*time.Millisecond,
-		hub.Broadcast,
+		realtimeHub.BroadcastFor,
 	)
 	svcMon.Start()
 
@@ -102,9 +133,10 @@ func main() {
 		dbInterval = 30000
 	}
 	dbMon := monitor.NewDatabaseMonitor(
+		localID,
 		cfg.Databases,
 		time.Duration(dbInterval)*time.Millisecond,
-		hub.Broadcast,
+		realtimeHub.BroadcastFor,
 	)
 	dbMon.Start()
 
@@ -114,8 +146,9 @@ func main() {
 		pm2Interval = 5000
 	}
 	pm2Mon := monitor.NewPM2Monitor(
+		localID,
 		time.Duration(pm2Interval)*time.Millisecond,
-		hub.Broadcast,
+		realtimeHub.BroadcastFor,
 	)
 	pm2Mon.Start()
 
@@ -176,18 +209,76 @@ func main() {
 		log.Fatalf("Failed to get frontend assets: %v", err)
 	}
 
-	// 11. Setup Router
-	r := api.NewRouter(cfg, hub, store, alertEngine, authManager, frontendFS)
+	// 11. Setup hub registry + connection manager. The SQLite store is
+	// required for v2 multi-server. If storage is disabled (rare), the
+	// hub still runs but cannot mint/list remote agents.
+	var registry *hub.Registry
+	var connections *hub.Connections
+	if sqliteStore := store.SQLiteStore(); sqliteStore != nil {
+		reg, regErr := hub.NewRegistry(sqliteStore.DB())
+		if regErr != nil {
+			log.Fatalf("hub registry: %v", regErr)
+		}
+		registry = reg
+		connections = hub.NewConnections(registry)
+	} else {
+		log.Println("⚠️  storage disabled — multi-server registry unavailable")
+	}
+
+	// 12. Setup Router
+	r := api.NewRouter(api.Deps{
+		Config:      cfg,
+		Hub:         realtimeHub,
+		Store:       store,
+		Alerts:      alertEngine,
+		AuthManager: authManager,
+		FrontendFS:  frontendFS,
+		Registry:    registry,
+		Connections: connections,
+	})
 
 	// Serve static files (CSS, JS, images, etc.)
 	fileServer := http.FileServer(http.FS(frontendFS))
 	r.PathPrefix("/").Handler(fileServer)
 
-	// 11. Start Server
+	// 13. Start Server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	log.Printf("Starting server on http://%s", addr)
 
 	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+// runAgent loads the agent config from --config (or --hub / --token flags
+// for ad-hoc runs) and blocks driving the agent loop.
+func runAgent() {
+	path := *configFlag
+	if path == "" {
+		path = "agent.config.json"
+	}
+
+	// Prefer the config file; fall back to flags for first-run sanity checks
+	// where the operator hasn't installed a config yet.
+	var cfg config.AgentConfig
+	if _, err := os.Stat(path); err == nil {
+		loaded, err := config.LoadAgentConfig(path)
+		if err != nil {
+			log.Fatalf("agent: load config %s: %v", path, err)
+		}
+		cfg = *loaded
+	}
+	if *agentHubFlag != "" {
+		cfg.HubURL = *agentHubFlag
+	}
+	if *agentTokenFlag != "" {
+		cfg.Token = *agentTokenFlag
+	}
+	if cfg.ServerID == "" {
+		cfg.ServerID = os.Getenv("AGENT_SERVER_ID")
+	}
+
+	if err := agent.Run(cfg); err != nil {
+		log.Fatalf("agent: %v", err)
 	}
 }

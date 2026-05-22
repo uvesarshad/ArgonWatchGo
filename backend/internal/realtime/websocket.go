@@ -5,9 +5,17 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
+
+	"argon-watch-go/internal/transport"
 
 	"github.com/gorilla/websocket"
 )
+
+// LocalServerID is the implicit server ID for in-process monitors running
+// inside a single-binary hub install. Mirrors storage.LocalServerID; kept
+// here as a copy to avoid an import cycle.
+const LocalServerID = "local"
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -18,7 +26,7 @@ var upgrader = websocket.Upgrader{
 
 type Hub struct {
 	clients        map[*Client]bool
-	broadcast      chan Message
+	broadcast      chan transport.Envelope
 	register       chan *Client
 	unregister     chan *Client
 	mu             sync.Mutex
@@ -31,6 +39,10 @@ type Client struct {
 	send chan []byte
 }
 
+// Message is the legacy v1 wire shape kept for the inbound message handler
+// (browsers still send {type, payload}). Outbound, the hub speaks the v2
+// transport.Envelope which adds serverId + ts. Old clients ignore unknown
+// fields so this is backward-compatible.
 type Message struct {
 	Type string      `json:"type"`
 	Data interface{} `json:"payload"`
@@ -38,7 +50,7 @@ type Message struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		broadcast:  make(chan Message),
+		broadcast:  make(chan transport.Envelope, 64),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		clients:    make(map[*Client]bool),
@@ -79,10 +91,28 @@ func (h *Hub) Run() {
 	}
 }
 
+// Broadcast sends a message tagged as originating from the implicit local
+// server. Kept for v1 callers that pre-date multi-server routing.
 func (h *Hub) Broadcast(msgType string, data interface{}) {
-	h.broadcast <- Message{
-		Type: msgType,
-		Data: data,
+	h.BroadcastFor(LocalServerID, msgType, data)
+}
+
+// BroadcastFor sends a message scoped to a specific server. The browser
+// receives the v2 envelope shape ({type, serverId, ts, payload}); v1 clients
+// that only read "type"/"payload" still work since they ignore the extras.
+func (h *Hub) BroadcastFor(serverID, msgType string, data interface{}) {
+	env := transport.Envelope{
+		Type:     msgType,
+		ServerID: serverID,
+		Ts:       time.Now().UnixMilli(),
+		Payload:  data,
+	}
+	// Non-blocking send: a slow consumer must never stall a monitor goroutine.
+	// Channel is buffered (64); if it's full we drop and log rather than block.
+	select {
+	case h.broadcast <- env:
+	default:
+		log.Printf("realtime: broadcast buffer full, dropping %s for %s", msgType, serverID)
 	}
 }
 

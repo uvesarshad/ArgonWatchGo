@@ -19,8 +19,9 @@ import (
 )
 
 type SystemMonitor struct {
+	serverID       string
 	interval       time.Duration
-	broadcast      func(string, interface{})
+	broadcast      func(serverID, msgType string, data interface{})
 	storage        *storage.Storage
 	alerts         *alerts.AlertEngine
 	stopChan       chan struct{}
@@ -122,8 +123,9 @@ type DiskHealthMetrics struct {
 	Temperature float64 `json:"temperature,omitempty"`
 }
 
-func NewSystemMonitor(interval time.Duration, broadcast func(string, interface{}), store *storage.Storage, alerts *alerts.AlertEngine) *SystemMonitor {
+func NewSystemMonitor(serverID string, interval time.Duration, broadcast func(serverID, msgType string, data interface{}), store *storage.Storage, alerts *alerts.AlertEngine) *SystemMonitor {
 	return &SystemMonitor{
+		serverID:       serverID,
 		interval:       interval,
 		broadcast:      broadcast,
 		storage:        store,
@@ -204,10 +206,10 @@ func (m *SystemMonitor) collectMetrics() {
 		Uptime:       uptime,
 	}
 
-	// Store historical data
+	// Store historical data, scoped to this monitor's server.
 	if m.storage != nil {
-		m.storage.AddDataPoint("cpu", cpuMetrics.Load)
-		m.storage.AddDataPoint("memory", memMetrics.Percentage)
+		m.storage.AddDataPointScoped(m.serverID, "cpu", cpuMetrics.Load)
+		m.storage.AddDataPointScoped(m.serverID, "memory", memMetrics.Percentage)
 	}
 
 	// Check alerts
@@ -218,7 +220,7 @@ func (m *SystemMonitor) collectMetrics() {
 		m.alerts.CheckMetrics(mapData)
 	}
 
-	m.broadcast("SYSTEM_METRICS", data)
+	m.broadcast(m.serverID, "SYSTEM_METRICS", data)
 	m.lastUpdateTime = now
 }
 

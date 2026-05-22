@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/graph-tabs.css">
     <link rel="stylesheet" href="css/graphs-grid.css">
+    <link rel="stylesheet" href="css/multi-server.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- Session check - must run before page loads -->
     <script src="js/session-check.js"></script>
@@ -65,6 +66,20 @@
                 </button>
             </div>
         </header>
+
+        <!-- v2 multi-server: tab strip + "+ Add Server" button. Populated
+             by js/multi-server.js once the server registry is fetched. -->
+        <nav id="server-tabs" class="server-tabs" aria-label="Servers"></nav>
+
+        <!-- v2 multi-server: "All Servers" overview grid. Default landing
+             view; hidden when the user selects a specific server. -->
+        <main id="overview-container" class="overview-container" style="display:none">
+            <section class="overview-header">
+                <h1>All Servers</h1>
+                <p class="overview-help">Live view of every connected agent. Click a card to drill in.</p>
+            </section>
+            <div id="overview-grid" class="overview-grid"></div>
+        </main>
 
         <main class="dashboard-container">
             <!-- System Info Header -->
@@ -517,6 +532,10 @@
             </div>
         </div>
     </div>
+
+    <!-- v2 multi-server: add-server modal target. multi-server.js builds
+         the inner contents on demand. -->
+    <div id="add-server-modal" class="modal" aria-hidden="true"></div>
 
     <script type="module" src="js/app.js"></script>
 </body>

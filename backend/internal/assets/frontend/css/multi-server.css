@@ -1,0 +1,235 @@
+/* v2 multi-server UI: server tab strip, "All Servers" overview grid, and
+   the add-server modal. Lives in a separate stylesheet so we can tear it
+   out cleanly during the Phase 2 design system refactor. */
+
+/* ---------- Server tab strip ---------- */
+.server-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    background: var(--bg-elevated, rgba(255, 255, 255, 0.02));
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+.server-tabs::-webkit-scrollbar { height: 4px; }
+.server-tabs::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
+
+.server-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.server-tab:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary, #fff);
+}
+.server-tab.active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: var(--text-primary, #fff);
+}
+.server-tab.add-server-btn {
+    color: var(--text-tertiary, rgba(255, 255, 255, 0.5));
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+}
+.server-tab.add-server-btn:hover {
+    border-color: rgba(59, 130, 246, 0.5);
+    color: var(--text-primary, #fff);
+}
+
+.tab-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.dot-online { background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+.dot-offline { background: #ef4444; }
+
+.tab-close {
+    margin-left: 4px;
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 4px;
+    opacity: 0.4;
+    font-size: 16px;
+}
+.tab-close:hover { opacity: 1; background: rgba(239, 68, 68, 0.2); }
+
+/* ---------- Overview grid ---------- */
+.overview-container {
+    padding: 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+.overview-header h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+}
+.overview-help {
+    margin: 0 0 20px;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+    font-size: 13px;
+}
+.overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+.overview-card {
+    background: var(--bg-card, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 120ms ease, transform 120ms ease;
+}
+.overview-card:hover {
+    border-color: rgba(59, 130, 246, 0.5);
+    transform: translateY(-1px);
+}
+.overview-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.overview-card-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+}
+.overview-card-os {
+    font-size: 11px;
+    color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.overview-metrics {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.overview-metric { font-size: 12px; }
+.overview-metric-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.overview-metric-label { color: var(--text-secondary, rgba(255, 255, 255, 0.7)); }
+.overview-metric-value { font-variant-numeric: tabular-nums; font-weight: 500; }
+.overview-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.overview-bar-fill { height: 100%; border-radius: 2px; transition: width 300ms ease; }
+.overview-bar-fill.low { background: #10b981; }
+.overview-bar-fill.med { background: #f59e0b; }
+.overview-bar-fill.high { background: #ef4444; }
+.overview-card-footer {
+    font-size: 11px;
+    color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+}
+.overview-empty {
+    grid-column: 1 / -1;
+    padding: 48px 24px;
+    text-align: center;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+.overview-empty h3 { margin: 0 0 8px; }
+.overview-empty p { margin: 0; color: var(--text-secondary, rgba(255, 255, 255, 0.6)); }
+
+/* ---------- Add-server modal ---------- */
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+}
+.modal.open { display: block; }
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+}
+.modal-card {
+    position: relative;
+    margin: 8vh auto 0;
+    max-width: 560px;
+    background: var(--bg-card, #1a1a1a);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 12px;
+    padding: 24px;
+    color: var(--text-primary, #fff);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.modal-card h2 { margin: 0 0 6px; font-size: 18px; }
+.modal-help { margin: 0 0 16px; color: var(--text-secondary, rgba(255, 255, 255, 0.7)); font-size: 13px; }
+.modal-card label {
+    display: block;
+    margin: 14px 0 6px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+.modal-card input[type=text] {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: inherit;
+    font-size: 14px;
+}
+.modal-card input[type=text]:focus { outline: none; border-color: rgba(59, 130, 246, 0.6); }
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+.install-cmd {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 4px 0 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    cursor: pointer;
+    transition: border-color 120ms ease;
+}
+.install-cmd:hover { border-color: rgba(59, 130, 246, 0.5); }
+.install-cmd.copied { border-color: rgba(16, 185, 129, 0.6); }
+.install-manual { margin: 12px 0; font-size: 13px; }
+.install-manual summary { cursor: pointer; color: var(--text-secondary, rgba(255, 255, 255, 0.6)); }
+
+/* ---------- Mobile ---------- */
+@media (max-width: 768px) {
+    .overview-container { padding: 16px; }
+    .overview-grid { grid-template-columns: 1fr; }
+    .server-tabs { padding: 8px 12px; }
+    .modal-card { margin: 4vh 12px 0; }
+}

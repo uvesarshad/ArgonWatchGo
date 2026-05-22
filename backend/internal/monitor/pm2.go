@@ -7,8 +7,9 @@ import (
 )
 
 type PM2Monitor struct {
+	serverID  string
 	interval  time.Duration
-	broadcast func(string, interface{})
+	broadcast func(serverID, msgType string, data interface{})
 	stopChan  chan struct{}
 }
 
@@ -42,8 +43,9 @@ type PM2ProcessDTO struct {
 	MemoryHuman string `json:"memory_human"`
 }
 
-func NewPM2Monitor(interval time.Duration, broadcast func(string, interface{})) *PM2Monitor {
+func NewPM2Monitor(serverID string, interval time.Duration, broadcast func(serverID, msgType string, data interface{})) *PM2Monitor {
 	return &PM2Monitor{
+		serverID:  serverID,
 		interval:  interval,
 		broadcast: broadcast,
 		stopChan:  make(chan struct{}),
@@ -105,5 +107,5 @@ func (m *PM2Monitor) checkPM2() {
 		results = append(results, dto)
 	}
 
-	m.broadcast("PM2_STATUS", results)
+	m.broadcast(m.serverID, "PM2_STATUS", results)
 }

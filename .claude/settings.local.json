@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go get *)",
+      "Bash(go build *)",
+      "Bash(go mod *)",
+      "Bash(go vet *)",
+      "Bash(go test *)",
+      "Bash(../argon-watch-v2.exe)",
+      "Bash(echo \"started PID=$!\")",
+      "Bash(curl -s -o /tmp/resp.html -w \"HTTP %{http_code}\\\\n\" http://127.0.0.1:13900/)",
+      "Bash(curl -s \"http://127.0.0.1:13900/api/history/cpu?duration=1h\" -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(taskkill /F /IM argon-watch-v2.exe)",
+      "Bash(stat -c '%Y %n' \"e:/Projects/argon_watch 2/frontend/index.html\" \"e:/Projects/argon_watch 2/backend/internal/assets/frontend/index.html\" \"e:/Projects/argon_watch 2/frontend/js/app.js\" \"e:/Projects/argon_watch 2/backend/internal/assets/frontend/js/app.js\")",
+      "Read(//e/Projects/argon_watch 2/backend/**)",
+      "Bash(../../argon-watch-v2.exe)",
+      "Bash(echo \"hub pid=$!\")",
+      "Bash(curl -s http://127.0.0.1:13901/api/v2/servers)",
+      "Bash(curl -s \"http://127.0.0.1:13901/api/v2/servers/891237b6-0d35-4bd7-8364-7e7d1d0cf55b/history/cpu?duration=1h\")",
+      "Bash(curl -v \"http://127.0.0.1:13901/agent?id=891237b6-0d35-4bd7-8364-7e7d1d0cf55b&token=aw_de315f8669350a3cb0c8bae0308dfa293788fc8c266f9ec98e5c8e29ce4418f3\")",
+      "Bash(curl -s -X POST http://127.0.0.1:13901/api/v2/servers -H \"Content-Type: application/json\" -d '{\"name\":\"agent-fresh\"}')",
+      "Bash(curl -s \"http://127.0.0.1:13901/api/v2/servers/6340751c-4650-49c0-abfa-e7704369e7eb/history/cpu?duration=1h\")",
+      "PowerShell(Get-Process argon-watch-v2 -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(\"stopped\")",
+      "Bash(../../argon-watch-v2.exe --mode=agent --config=agent.config.json)",
+      "Bash(echo \"agent pid=$!\")",
+      "PowerShell(\"---hub.err---\")",
+      "PowerShell(\"---agent.err---\")",
+      "PowerShell(\"---ls---\")"
+    ]
+  }
+}

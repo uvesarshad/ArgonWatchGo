@@ -15,9 +15,10 @@ import (
 )
 
 type ServiceMonitor struct {
+	serverID  string
 	services  []config.ServiceConfig
 	interval  time.Duration
-	broadcast func(string, interface{})
+	broadcast func(serverID, msgType string, data interface{})
 	stopChan  chan struct{}
 }
 
@@ -35,8 +36,9 @@ type ServiceStatus struct {
 	Message      string    `json:"message"`
 }
 
-func NewServiceMonitor(services []config.ServiceConfig, interval time.Duration, broadcast func(string, interface{})) *ServiceMonitor {
+func NewServiceMonitor(serverID string, services []config.ServiceConfig, interval time.Duration, broadcast func(serverID, msgType string, data interface{})) *ServiceMonitor {
 	return &ServiceMonitor{
+		serverID:  serverID,
 		services:  services,
 		interval:  interval,
 		broadcast: broadcast,
@@ -73,7 +75,7 @@ func (m *ServiceMonitor) checkAll() {
 	for _, svc := range m.services {
 		results = append(results, m.checkService(svc))
 	}
-	m.broadcast("SERVICE_STATUS", results)
+	m.broadcast(m.serverID, "SERVICE_STATUS", results)
 }
 
 func (m *ServiceMonitor) checkService(svc config.ServiceConfig) ServiceStatus {
