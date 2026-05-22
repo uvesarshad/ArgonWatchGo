@@ -1,0 +1,83 @@
+{
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "monitoring": {
+    "systemInterval": 2000,
+    "runnerInterval": 5000,
+    "pm2Interval": 5000,
+    "servicesInterval": 30000
+  },
+  "storage": {
+    "enabled": true,
+    "retentionDays": 7,
+    "dataPath": "./data"
+  },
+  "alerts": {
+    "enabled": true,
+    "rules": []
+  },
+  "notifications": {
+    "desktop": {
+      "enabled": false
+    },
+    "email": {
+      "enabled": false,
+      "smtp": {
+        "host": "",
+        "port": 0,
+        "secure": false,
+        "auth": {
+          "user": "",
+          "pass": ""
+        }
+      },
+      "from": "",
+      "to": null
+    },
+    "discord": {
+      "enabled": false,
+      "webhookUrl": ""
+    },
+    "slack": {
+      "enabled": false,
+      "webhookUrl": ""
+    },
+    "telegram": {
+      "enabled": false
+    }
+  },
+  "services": [],
+  "databases": [],
+  "githubRunner": {
+    "runnerPath": "",
+    "logPath": "",
+    "runnerUser": ""
+  },
+  "github": {
+    "enabled": false,
+    "auth": {
+      "type": ""
+    }
+  },
+  "pm2": {
+    "pm2User": "root"
+  },
+  "terminal": {
+    "enabled": false,
+    "shell": "/bin/bash",
+    "sessionTimeout": 3600000
+  },
+  "auth": {
+    "enabled": true,
+    "jwtSecret": "Z1N2k6ofti5PfsRsT55Bf/AptcKjSVEcy+LH5oFtBAY=",
+    "tokenExpiration": 24,
+    "usersFile": "./data/users.json"
+  },
+  "permissions": {
+    "useSudo": false,
+    "runAsUser": "root"
+  },
+  "quickCommands": []
+}

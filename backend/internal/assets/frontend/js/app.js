@@ -5,6 +5,7 @@ import { enhanceChart, recomputeAnomalies } from './chart-enhancer.js';
 import { initTerminalPanel } from './terminal-panel.js';
 import { initAIChat } from './ai-chat.js';
 import { initDiagnosisToast } from './diagnosis-toast.js';
+import { initSettingsPanel, openSettings } from './settings-panel.js';
 
 class App {
     constructor() {
@@ -951,6 +952,28 @@ initAIChat().catch(e => console.warn('ai-chat init failed', e));
 // in the bottom-right corner. Cheap; only renders when the hub pushes
 // an ALERT_DIAGNOSIS envelope.
 initDiagnosisToast(app.ws);
+
+// Phase 8 settings panel — consolidates AI / Telegram / GitHub /
+// Alerts config so users stop needing to edit config.json by hand.
+initSettingsPanel();
+window.argonOpenSettings = openSettings;
+
+// Density toggle: persisted in localStorage. Reads on boot.
+(function wireDensity() {
+    const KEY = 'argon-density';
+    const btn = document.getElementById('density-toggle');
+    if (!btn) return;
+    const apply = (mode) => {
+        document.body.dataset.density = mode || 'comfortable';
+        btn.setAttribute('aria-pressed', mode === 'compact' ? 'true' : 'false');
+    };
+    apply(localStorage.getItem(KEY) || 'comfortable');
+    btn.addEventListener('click', () => {
+        const next = document.body.dataset.density === 'compact' ? 'comfortable' : 'compact';
+        localStorage.setItem(KEY, next);
+        apply(next);
+    });
+})();
 
 // PWA service worker. Soft-fails on browsers that don't support it (older
 // Safari, file:// previews). Only registers on http(s) — file:// throws.

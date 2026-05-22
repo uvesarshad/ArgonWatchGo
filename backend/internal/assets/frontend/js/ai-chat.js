@@ -236,6 +236,19 @@ function renderMessages() {
     const root = document.getElementById('ai-messages');
     if (!root) return;
     if (state.messages.length === 0) {
+        // No provider configured? Show a CTA that opens Settings → AI
+        // directly, since "no keys" is the most common first-run state.
+        if (state.providers.length === 0) {
+            root.innerHTML = `
+                <div class="ai-empty">
+                    <h3>No AI provider configured</h3>
+                    <p>Paste a Claude or Gemini API key to start asking the assistant about your servers.</p>
+                    <button type="button" class="btn-primary" id="ai-empty-settings">Open settings</button>
+                </div>`;
+            const btn = root.querySelector('#ai-empty-settings');
+            if (btn) btn.addEventListener('click', () => window.argonOpenSettings?.('ai'));
+            return;
+        }
         root.innerHTML = `
             <div class="ai-empty">
                 <p>Try:</p>
@@ -319,7 +332,16 @@ function setOpen(open) {
         panel.setAttribute('aria-hidden', open ? 'false' : 'true');
         panel.classList.toggle('open', open);
     }
-    if (open) document.getElementById('ai-input')?.focus();
+    if (open) {
+        document.getElementById('ai-input')?.focus();
+        // Re-fetch providers + history every time the panel opens so a
+        // key saved in Settings while the panel was closed shows up.
+        fetchProviders().then(() => {
+            renderProviderSelect();
+            renderMessages();
+        });
+        fetchHistory().then(renderSidebar);
+    }
 }
 function toggle() { setOpen(!state.open); }
 
