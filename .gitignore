@@ -5,17 +5,22 @@
 backend/argon-watch
 backend/argon-watch.exe
 backend/argon-watch-linux
+backend/argon-watch-*
+*.exe
 
 # Data (Ignore all data files and credentials)
 data/*
 backend/data/*
+backend/smoke/hub/data/*
+*.db
+*.db-shm
+*.db-wal
 *.jsonl
 users.json
 
 # Documentation (Exclude all MD except README)
 *.md
 !README.md
-
 
 # Logs
 *.log
