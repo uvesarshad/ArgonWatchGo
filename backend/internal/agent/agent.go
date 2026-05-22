@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"argon-watch-go/internal/agent/ghrunner"
 	"argon-watch-go/internal/config"
 	"argon-watch-go/internal/monitor"
 	"argon-watch-go/internal/transport"
@@ -181,6 +182,18 @@ func runOnce(ctx context.Context, cfg config.AgentConfig, dial string) error {
 	}
 	termMgr := newTerminalManager(cfg.Terminal, cfg.Permissions, termSend)
 	defer termMgr.CloseAll("agent shutdown")
+
+	// Self-hosted runner probe. Only spins up when the operator has
+	// pointed githubRunner.* at something — otherwise the dashboard
+	// shows "no runner installed" for hosts that aren't runners.
+	if ghrunner.Configured(cfg.GithubRunner) {
+		ghrPush := func(msgType string, payload interface{}) {
+			broadcast(cfg.ServerID, msgType, payload)
+		}
+		ghr := ghrunner.NewPoller(cfg.GithubRunner, 15*time.Second, ghrPush)
+		ghr.Start(sessionCtx)
+		defer ghr.Stop()
+	}
 
 	// Heartbeat tells the hub "I'm alive" + bumps last-seen. 10s is the
 	// spec'd cadence; the hub's read deadline is 60s so we can miss 5+

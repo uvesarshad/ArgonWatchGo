@@ -8,6 +8,7 @@ import (
 	"argon-watch-go/internal/alerts"
 	"argon-watch-go/internal/auth"
 	"argon-watch-go/internal/config"
+	"argon-watch-go/internal/github"
 	"argon-watch-go/internal/hub"
 	"argon-watch-go/internal/realtime"
 	"argon-watch-go/internal/storage"
@@ -19,15 +20,16 @@ import (
 // args; v2 adds the multi-server registry + connection manager so the
 // helper signature now has enough arguments to deserve a struct.
 type Deps struct {
-	Config       *config.Config
-	Hub          *realtime.Hub
-	Store        *storage.Storage
-	Alerts       *alerts.AlertEngine
-	AuthManager  *auth.Manager
-	FrontendFS   fs.FS
-	Registry     *hub.Registry
-	Connections  *hub.Connections
+	Config        *config.Config
+	Hub           *realtime.Hub
+	Store         *storage.Storage
+	Alerts        *alerts.AlertEngine
+	AuthManager   *auth.Manager
+	FrontendFS    fs.FS
+	Registry      *hub.Registry
+	Connections   *hub.Connections
 	TerminalProxy *hub.TerminalProxy
+	GitHubPoller  *github.Poller
 }
 
 func NewRouter(d Deps) *mux.Router {
@@ -111,6 +113,13 @@ func mountAPIRoutes(api *mux.Router, d Deps) {
 	if d.TerminalProxy != nil && d.AuthManager != nil {
 		v2.HandleFunc("/servers/{id}/terminal", mintTerminalSessionHandler(d.TerminalProxy)).Methods("POST")
 		v2.HandleFunc("/terminal/sessions", terminalAuditHandler(d.TerminalProxy, nil)).Methods("GET")
+	}
+
+	// v2 GitHub Actions endpoints — mount only when a poller is wired
+	// (i.e. github.enabled=true with at least one repo configured).
+	if d.GitHubPoller != nil {
+		v2.HandleFunc("/github/runs", listGithubRunsHandler(d.GitHubPoller)).Methods("GET")
+		v2.HandleFunc("/github/repos", listGithubReposHandler(d.GitHubPoller)).Methods("GET")
 	}
 }
 

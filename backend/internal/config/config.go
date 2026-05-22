@@ -16,6 +16,7 @@ type Config struct {
 	Services      []ServiceConfig     `json:"services"`
 	Databases     []DatabaseConfig    `json:"databases"`
 	GithubRunner  GithubRunnerConfig  `json:"githubRunner"`
+	GitHub        GitHubConfig        `json:"github,omitempty"` // Phase 4: workflow runs dashboard
 	PM2           PM2Config           `json:"pm2"`
 	Terminal      TerminalConfig      `json:"terminal"`
 	Auth          AuthConfig          `json:"auth"`

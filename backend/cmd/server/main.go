@@ -16,10 +16,13 @@ import (
 	"argon-watch-go/internal/assets"
 	"argon-watch-go/internal/auth"
 	"argon-watch-go/internal/config"
+	githubapi "argon-watch-go/internal/github"
 	"argon-watch-go/internal/hub"
 	"argon-watch-go/internal/monitor"
 	"argon-watch-go/internal/realtime"
 	"argon-watch-go/internal/storage"
+
+	"context"
 )
 
 // Mode is the runtime mode. Defaults to "hub" which preserves the v1
@@ -227,6 +230,34 @@ func main() {
 		log.Println("⚠️  storage disabled — multi-server registry unavailable")
 	}
 
+	// GitHub Actions poller. Opt-in via config.github.enabled + at least
+	// one repo. Phase 4 ships PAT-only; App auth lands in Phase 4.5.
+	var githubPoller *githubapi.Poller
+	if cfg.GitHub.Enabled && len(cfg.GitHub.Repos) > 0 {
+		var ghAuth githubapi.Auth
+		switch cfg.GitHub.Auth.Type {
+		case "pat", "":
+			ghAuth = &githubapi.PATAuth{Token: cfg.GitHub.Auth.Token}
+		default:
+			log.Printf("github: auth type %q not supported in Phase 4 (use \"pat\")", cfg.GitHub.Auth.Type)
+		}
+		if ghAuth != nil {
+			client := githubapi.New(ghAuth, githubapi.Options{})
+			interval := time.Duration(cfg.GitHub.PollInterval) * time.Millisecond
+			if interval <= 0 {
+				interval = 60 * time.Second
+			}
+			poller, err := githubapi.NewPoller(client, cfg.GitHub.Repos, interval, realtimeHub.BroadcastFor)
+			if err != nil {
+				log.Printf("github: poller init failed: %v", err)
+			} else {
+				githubPoller = poller
+				go poller.Start(context.Background())
+				log.Printf("github: poller started for %d repo(s) @ %s", len(cfg.GitHub.Repos), interval)
+			}
+		}
+	}
+
 	// 12. Setup Router
 	r := api.NewRouter(api.Deps{
 		Config:        cfg,
@@ -238,6 +269,7 @@ func main() {
 		Registry:      registry,
 		Connections:   connections,
 		TerminalProxy: terminalProxy,
+		GitHubPoller:  githubPoller,
 	})
 
 	// Serve static files (CSS, JS, images, etc.)

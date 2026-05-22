@@ -32,17 +32,18 @@ type HubConfig struct {
 // AgentConfig is the on-disk shape for an agent install. The hub generates
 // one of these (with a token baked in) for each `+ Add server` action.
 type AgentConfig struct {
-	HubURL      string            `json:"hubUrl"`
-	Token       string            `json:"token"`
-	ServerID    string            `json:"serverId,omitempty"`
-	Name        string            `json:"name,omitempty"`
-	Tags        map[string]string `json:"tags,omitempty"`
-	Monitoring  MonitoringConfig  `json:"monitoring,omitempty"`
-	Services    []ServiceConfig   `json:"services,omitempty"`
-	Databases   []DatabaseConfig  `json:"databases,omitempty"`
-	PM2         PM2Config         `json:"pm2,omitempty"`
-	Terminal    TerminalConfig    `json:"terminal,omitempty"`
-	Permissions PermissionsConfig `json:"permissions,omitempty"`
+	HubURL       string             `json:"hubUrl"`
+	Token        string             `json:"token"`
+	ServerID     string             `json:"serverId,omitempty"`
+	Name         string             `json:"name,omitempty"`
+	Tags         map[string]string  `json:"tags,omitempty"`
+	Monitoring   MonitoringConfig   `json:"monitoring,omitempty"`
+	Services     []ServiceConfig    `json:"services,omitempty"`
+	Databases    []DatabaseConfig   `json:"databases,omitempty"`
+	PM2          PM2Config          `json:"pm2,omitempty"`
+	Terminal     TerminalConfig     `json:"terminal,omitempty"`
+	Permissions  PermissionsConfig  `json:"permissions,omitempty"`
+	GithubRunner GithubRunnerConfig `json:"githubRunner,omitempty"` // Phase 4: self-hosted runner detection
 }
 
 // AIConfig holds provider keys and policy. Keys are stored encrypted at rest;
@@ -80,10 +81,12 @@ type GitHubConfig struct {
 }
 
 type GitHubAuth struct {
-	Type            string `json:"type"` // "pat" | "app"
-	TokenCipher     string `json:"tokenCipher,omitempty"`     // PAT
-	AppID           int64  `json:"appId,omitempty"`           // App
-	InstallationID  int64  `json:"installationId,omitempty"`  // App
+	Type             string `json:"type"`                       // "pat" | "app"
+	Token            string `json:"token,omitempty"`            // PAT (plaintext until Phase 6 vault lands)
+	TokenCipher      string `json:"tokenCipher,omitempty"`      // PAT (Phase 6 ciphertext)
+	AppID            int64  `json:"appId,omitempty"`            // App
+	InstallationID   int64  `json:"installationId,omitempty"`   // App
+	PrivateKey       string `json:"privateKey,omitempty"`       // App (Phase 6 will move to PrivateKeyCipher)
 	PrivateKeyCipher string `json:"privateKeyCipher,omitempty"` // App
 }
 
