@@ -152,6 +152,24 @@ async function openTerminal(serverId) {
         const { cols, rows } = term;
         ws.send(JSON.stringify({ type: 'resize', cols, rows }));
         term.focus();
+
+        // Phase 7: if the AI sidebar dropped a "Run in terminal" hint
+        // before this panel opened, type it into the shell — DO NOT
+        // press Enter. The operator must hit Return themselves; locked
+        // plan §3 forbids auto-execution of model-proposed commands.
+        const pending = window.argonRunInTerminal;
+        if (pending && pending.server === serverId && pending.command) {
+            // Wait a tick so the shell prompt has printed first; then
+            // send the chars over the WS as if the user typed them.
+            setTimeout(() => {
+                ws.send(JSON.stringify({
+                    type: 'input',
+                    data: bytesToB64(new TextEncoder().encode(pending.command)),
+                }));
+                setStatus('Command prefilled — press Enter to run.', 'warn');
+                window.argonRunInTerminal = null;
+            }, 350);
+        }
     };
 
     ws.onmessage = (ev) => {

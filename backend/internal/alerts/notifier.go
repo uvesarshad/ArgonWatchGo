@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/smtp"
+	"strings"
 	"time"
 
 	"argon-watch-go/internal/config"
@@ -34,6 +36,10 @@ func (n *Notifier) Notify(alert AlertHistory, rule config.AlertRule) {
 		case "slack":
 			if n.config.Slack.Enabled {
 				n.sendSlack(alert, rule)
+			}
+		case "telegram":
+			if n.config.Telegram.Enabled {
+				n.sendTelegram(alert, rule)
 			}
 		case "desktop":
 			n.sendDesktop(alert, rule)
@@ -129,6 +135,68 @@ func (n *Notifier) sendSlack(alert AlertHistory, rule config.AlertRule) {
 	}
 
 	sendWebhook(n.config.Slack.WebhookURL, body)
+}
+
+// sendTelegram posts a Markdown-formatted message to every configured
+// chat ID. Errors are logged but never returned — alert delivery is
+// best-effort by design (a failed Telegram POST shouldn't block the
+// in-app alert UI from updating).
+func (n *Notifier) sendTelegram(alert AlertHistory, rule config.AlertRule) {
+	cfg := n.config.Telegram
+	if cfg.BotToken == "" || len(cfg.ChatIDs) == 0 {
+		log.Printf("Telegram: missing botToken or chatIds — skipping")
+		return
+	}
+
+	emoji := getEmoji(alert.Status)
+	title := fmt.Sprintf("%s *%s*", emoji, escapeMarkdown(rule.Name))
+	server := ""
+	if alert.ServerID != "" {
+		server = fmt.Sprintf("\n_server:_ `%s`", escapeMarkdown(alert.ServerID))
+	}
+	body := fmt.Sprintf(
+		"%s%s\n_metric:_ `%s`\n_value:_ `%v`\n_threshold:_ `%v`\n_severity:_ `%s`\n_status:_ `%s`",
+		title, server,
+		escapeMarkdown(rule.Metric),
+		alert.Value,
+		alert.Threshold,
+		alert.Severity,
+		alert.Status,
+	)
+
+	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", cfg.BotToken)
+	for _, chat := range cfg.ChatIDs {
+		payload := map[string]interface{}{
+			"chat_id":    chat,
+			"text":       body,
+			"parse_mode": "Markdown",
+			"disable_web_page_preview": true,
+		}
+		jsonBody, _ := json.Marshal(payload)
+		resp, err := http.Post(endpoint, "application/json", bytes.NewBuffer(jsonBody))
+		if err != nil {
+			log.Printf("Telegram send to %s failed: %v", chat, err)
+			continue
+		}
+		// Drain + close so the connection can be reused.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			log.Printf("Telegram send to %s: HTTP %d", chat, resp.StatusCode)
+		} else {
+			log.Printf("📣 Telegram sent: %s → %s", rule.Name, chat)
+		}
+	}
+}
+
+// escapeMarkdown best-effort-escapes the small set of MarkdownV1 syntax
+// characters that would break alert payloads. We use the legacy
+// Markdown parse mode (not V2) because it doesn't require escaping
+// dots and dashes, which appear constantly in metric names like
+// `cpu.load`.
+func escapeMarkdown(s string) string {
+	r := strings.NewReplacer("_", "\\_", "*", "\\*", "`", "\\`", "[", "\\[")
+	return r.Replace(s)
 }
 
 func (n *Notifier) sendDesktop(alert AlertHistory, rule config.AlertRule) {

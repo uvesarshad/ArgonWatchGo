@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"argon-watch-go/internal/agent"
+	"argon-watch-go/internal/ai"
 	"argon-watch-go/internal/alerts"
 	"argon-watch-go/internal/api"
 	"argon-watch-go/internal/assets"
 	"argon-watch-go/internal/auth"
 	"argon-watch-go/internal/config"
+	cryptopkg "argon-watch-go/internal/crypto"
 	githubapi "argon-watch-go/internal/github"
 	"argon-watch-go/internal/hub"
 	"argon-watch-go/internal/monitor"
@@ -230,6 +232,48 @@ func main() {
 		log.Println("⚠️  storage disabled — multi-server registry unavailable")
 	}
 
+	// AI assistant: encrypted key vault + chat service. Wired only when
+	// auth is on AND storage is enabled — vault key derives from JWT
+	// secret (so auth-off has no derivation source) and the conversation
+	// + keys tables live in SQLite. AuthManager-required keeps the chat
+	// endpoint behind login.
+	var aiDeps api.AIDeps
+	if cfg.Auth.Enabled && authManager != nil && store.SQLiteStore() != nil {
+		vault, err := cryptopkg.NewVault(cfg.Auth.JWTSecret, "ai-vault")
+		if err != nil {
+			log.Printf("ai: vault init failed (%v) — AI assistant disabled", err)
+		} else {
+			aiStore, err := ai.NewStore(store.SQLiteStore().DB(), vault)
+			if err != nil {
+				log.Printf("ai: store init failed (%v) — AI assistant disabled", err)
+			} else {
+				aiTools := ai.NewToolExecutor(ai.ToolDeps{
+					Registry: registry,
+					Store:    store,
+					Alerts:   alertEngine,
+					GitHub:   nil, // wired below once the poller exists
+				})
+				aiSvc := ai.NewService(aiStore, aiTools)
+
+				// Phase 7: proactive diagnoser + scheduled reporter.
+				// Daily token cap: 50k by default (~10-20 small calls).
+				// Sized so a flapping alert can't blow the provider budget
+				// in a single afternoon.
+				diag := ai.NewDiagnoser(aiStore, aiTools, store, 50_000)
+				diag.Subscribe(ai.NewBroadcastSink(realtimeHub.BroadcastFor))
+				alertEngine.SetDiagnoser(ai.NewAlertBridge(diag))
+
+				// Weekly report runs every 7 days from process start.
+				// Operators can fire ad-hoc reports via the REST endpoint.
+				reporter := ai.NewReporter(aiStore, store, alertEngine, registry, 7*24*time.Hour)
+				reporter.Subscribe(ai.NewBroadcastSink(realtimeHub.BroadcastFor))
+				reporter.Start(context.Background())
+
+				aiDeps = api.AIDeps{Service: aiSvc, Store: aiStore, Reporter: reporter}
+			}
+		}
+	}
+
 	// GitHub Actions poller. Opt-in via config.github.enabled + at least
 	// one repo. Phase 4 ships PAT-only; App auth lands in Phase 4.5.
 	var githubPoller *githubapi.Poller
@@ -270,6 +314,7 @@ func main() {
 		Connections:   connections,
 		TerminalProxy: terminalProxy,
 		GitHubPoller:  githubPoller,
+		AI:            aiDeps,
 	})
 
 	// Serve static files (CSS, JS, images, etc.)

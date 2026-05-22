@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"argon-watch-go/internal/alerts"
 	"argon-watch-go/internal/realtime"
 	"argon-watch-go/internal/storage"
 	"argon-watch-go/internal/transport"
@@ -23,7 +24,7 @@ var agentUpgrader = websocket.Upgrader{
 // agent ↔ hub WebSocket. Agents connect with ?id=<serverId>&token=<token>;
 // successfully authenticated, every envelope they send is rebroadcast to
 // browser clients via the realtime hub (transparently scoped to their ID).
-func AgentWSHandler(reg *Registry, conns *Connections, rt *realtime.Hub, store *storage.Storage, terms *TerminalProxy) http.HandlerFunc {
+func AgentWSHandler(reg *Registry, conns *Connections, rt *realtime.Hub, store *storage.Storage, terms *TerminalProxy, ae *alerts.AlertEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		serverID := r.URL.Query().Get("id")
 		token := r.URL.Query().Get("token")
@@ -85,6 +86,14 @@ func AgentWSHandler(reg *Registry, conns *Connections, rt *realtime.Hub, store *
 				// scoped history endpoint returns null for remote agents.
 				if store != nil {
 					storeRemoteSystemMetrics(store, serverID, env.Payload)
+				}
+				// Phase 5: also run the alert engine against this server's
+				// metrics. Without this, alert rules with serverIds
+				// pointing at remote agents would never fire.
+				if ae != nil {
+					if m, ok := env.Payload.(map[string]interface{}); ok {
+						ae.CheckMetricsForServer(serverID, m)
+					}
 				}
 			case transport.MsgTerminalOut, transport.MsgTerminalExit:
 				// Terminal output rides the same agent connection as

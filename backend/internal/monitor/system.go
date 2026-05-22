@@ -217,7 +217,7 @@ func (m *SystemMonitor) collectMetrics() {
 		var mapData map[string]interface{}
 		bytes, _ := json.Marshal(data)
 		json.Unmarshal(bytes, &mapData)
-		m.alerts.CheckMetrics(mapData)
+		m.alerts.CheckMetricsForServer(m.serverID, mapData)
 	}
 
 	m.broadcast(m.serverID, "SYSTEM_METRICS", data)

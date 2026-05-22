@@ -30,6 +30,7 @@ type Deps struct {
 	Connections   *hub.Connections
 	TerminalProxy *hub.TerminalProxy
 	GitHubPoller  *github.Poller
+	AI            AIDeps
 }
 
 func NewRouter(d Deps) *mux.Router {
@@ -53,7 +54,7 @@ func NewRouter(d Deps) *mux.Router {
 
 	// Agent WebSocket: auth is per-agent token (query string), not the
 	// JWT browser session. Lives outside the /api auth subtree.
-	r.Handle("/agent", hub.AgentWSHandler(d.Registry, d.Connections, d.Hub, d.Store, d.TerminalProxy))
+	r.Handle("/agent", hub.AgentWSHandler(d.Registry, d.Connections, d.Hub, d.Store, d.TerminalProxy, d.Alerts))
 
 	// Terminal browser WS. Auth is via JWT (cookie/header/query) checked
 	// inside the proxy handler — same surface as the agent WS so the
@@ -121,6 +122,11 @@ func mountAPIRoutes(api *mux.Router, d Deps) {
 		v2.HandleFunc("/github/runs", listGithubRunsHandler(d.GitHubPoller)).Methods("GET")
 		v2.HandleFunc("/github/repos", listGithubReposHandler(d.GitHubPoller)).Methods("GET")
 	}
+
+	// v2 AI endpoints. Self-omitting when the service isn't wired so
+	// auth-disabled installs (where we can't safely vault keys) don't
+	// expose the chat surface unauthenticated.
+	mountAIRoutes(v2, d.AI)
 }
 
 func getConfigHandler(cfg *config.Config) http.HandlerFunc {

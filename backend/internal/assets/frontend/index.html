@@ -21,6 +21,8 @@
     <link rel="stylesheet" href="css/charts-v2.css">
     <link rel="stylesheet" href="css/terminal.css">
     <link rel="stylesheet" href="css/actions.css">
+    <link rel="stylesheet" href="css/ai-chat.css">
+    <link rel="stylesheet" href="css/toasts.css">
     <link rel="stylesheet" href="css/responsive.css">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -584,6 +586,11 @@
     <!-- v2 multi-server: add-server modal target. multi-server.js builds
          the inner contents on demand. -->
     <div id="add-server-modal" class="modal" aria-hidden="true"></div>
+
+    <!-- v2 AI assistant: floating action button + slide-in sidebar.
+         Self-hides when no providers are configured (auth-off installs
+         or fresh installs where the admin hasn't pasted a key yet). -->
+    <div id="ai-chat-root" style="display:none"></div>
 
     <script type="module" src="js/app.js"></script>
 </body>

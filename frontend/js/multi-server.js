@@ -9,12 +9,15 @@
 // re-shows the dashboard.
 
 const ALL_SERVERS = '__all__';
+const GITHUB_TAB  = '__github__'; // virtual tab — routed to actions-panel.js
 
 const state = {
     servers: [],          // [{ id, name, status, os, version, lastSeen }]
     currentId: ALL_SERVERS, // default landing per locked decision (§9.5)
     snapshots: new Map(), // id -> { cpu, memory, disk, network, lastSeen }
     ws: null,
+    githubAvailable: false, // set true once initActionsPanel confirms the poller is up
+    actions: null,          // dynamically imported module handle
 };
 
 function authHeaders() {
@@ -86,9 +89,14 @@ function ingestEnvelope(env) {
 
 function setCurrentServer(id) {
     state.currentId = id;
+    // Hide every primary view first; the chosen tab re-shows its own.
+    hideAllPrimary();
     if (id === ALL_SERVERS) {
         state.ws.setServerFilter(null);
         showOverview();
+    } else if (id === GITHUB_TAB) {
+        state.ws.setServerFilter(null);
+        if (state.actions) state.actions.show();
     } else {
         state.ws.setServerFilter(id);
         showDashboard();
@@ -101,14 +109,29 @@ function setCurrentServer(id) {
     }
 }
 
+function hideAllPrimary() {
+    const dash = document.querySelector('.dashboard-container');
+    const ov = document.getElementById('overview-container');
+    const ac = document.getElementById('actions-container');
+    if (dash) dash.style.display = 'none';
+    if (ov) ov.style.display = 'none';
+    if (ac) ac.style.display = 'none';
+}
+
 function routeFor(id) {
-    return id === ALL_SERVERS ? '#/overview' : `#/server/${id}`;
+    if (id === ALL_SERVERS) return '#/overview';
+    if (id === GITHUB_TAB)  return '#/github';
+    return `#/server/${id}`;
 }
 
 function applyRoute() {
     const hash = window.location.hash || '#/overview';
     if (hash === '#/overview' || hash === '#/') {
         setCurrentServer(ALL_SERVERS);
+        return;
+    }
+    if (hash === '#/github' && state.githubAvailable) {
+        setCurrentServer(GITHUB_TAB);
         return;
     }
     const m = hash.match(/^#\/server\/([^/]+)/);
@@ -132,6 +155,11 @@ function renderTabs() {
 
     // "All Servers" tab is always first.
     root.appendChild(makeTab(ALL_SERVERS, 'All Servers', null));
+
+    // GitHub Actions tab — only when the poller is configured.
+    if (state.githubAvailable) {
+        root.appendChild(makeTab(GITHUB_TAB, 'GitHub Actions', 'online'));
+    }
 
     for (const s of state.servers) {
         root.appendChild(makeTab(s.id, s.name, s.status));
@@ -158,7 +186,7 @@ function makeTab(id, name, status) {
     const label = document.createElement('span');
     label.textContent = name;
     btn.appendChild(label);
-    if (id !== '__all__' && id !== 'local') {
+    if (id !== '__all__' && id !== '__github__' && id !== 'local') {
         const close = document.createElement('span');
         close.className = 'tab-close';
         close.textContent = '×';
@@ -183,18 +211,14 @@ function makeTab(id, name, status) {
 }
 
 function showOverview() {
-    const dash = document.querySelector('.dashboard-container');
     const ov = document.getElementById('overview-container');
-    if (dash) dash.style.display = 'none';
     if (ov) ov.style.display = '';
     renderOverview();
 }
 
 function showDashboard() {
     const dash = document.querySelector('.dashboard-container');
-    const ov = document.getElementById('overview-container');
     if (dash) dash.style.display = '';
-    if (ov) ov.style.display = 'none';
 }
 
 function renderOverview() {
@@ -377,6 +401,21 @@ export async function initMultiServer(ws) {
     } catch (e) {
         console.error('multi-server: initial server fetch failed', e);
     }
+
+    // Probe GitHub Actions poller. The /api/v2/github/runs endpoint
+    // 404s when github.enabled=false, in which case we leave the tab
+    // hidden — the user shouldn't see chrome for a feature that's off.
+    try {
+        const actions = await import('./actions-panel.js');
+        await actions.initActionsPanel(ws);
+        if (actions.isEnabled()) {
+            state.githubAvailable = true;
+            state.actions = actions;
+        }
+    } catch (e) {
+        console.warn('multi-server: actions panel unavailable', e);
+    }
+
     ws.onEnvelope(ingestEnvelope);
     window.addEventListener('hashchange', applyRoute);
     renderTabs();

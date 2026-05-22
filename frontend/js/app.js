@@ -3,6 +3,8 @@ import { GaugeChart } from './utils/gauge.js';
 import { initMultiServer } from './multi-server.js';
 import { enhanceChart, recomputeAnomalies } from './chart-enhancer.js';
 import { initTerminalPanel } from './terminal-panel.js';
+import { initAIChat } from './ai-chat.js';
+import { initDiagnosisToast } from './diagnosis-toast.js';
 
 class App {
     constructor() {
@@ -941,6 +943,14 @@ initMultiServer(app.ws).catch(e => console.error('multi-server init failed', e))
 
 // Phase 3 terminal — xterm.js panel lazy-loads on first open.
 initTerminalPanel();
+
+// Phase 6 AI assistant — self-hides when no providers are configured.
+initAIChat().catch(e => console.warn('ai-chat init failed', e));
+
+// Phase 7 diagnosis toasts — surfaces AI-generated alert annotations
+// in the bottom-right corner. Cheap; only renders when the hub pushes
+// an ALERT_DIAGNOSIS envelope.
+initDiagnosisToast(app.ws);
 
 // PWA service worker. Soft-fails on browsers that don't support it (older
 // Safari, file:// previews). Only registers on http(s) — file:// throws.

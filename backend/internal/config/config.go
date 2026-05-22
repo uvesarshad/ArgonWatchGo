@@ -57,13 +57,32 @@ type AlertRule struct {
 	Severity      string   `json:"severity"`
 	Enabled       bool     `json:"enabled"`
 	Notifications []string `json:"notifications"`
+
+	// Phase 5 additions.
+	// ServerIDs restricts which servers this rule applies to. Empty
+	// means all servers (back-compat with v1 rules).
+	ServerIDs []string `json:"serverIds,omitempty"`
+	// CooldownMs is the minimum gap between two triggers of this rule.
+	// Zero = no cooldown (legacy behavior). 60_000 default in the engine.
+	CooldownMs int `json:"cooldownMs,omitempty"`
 }
 
 type NotificationsConfig struct {
-	Desktop DesktopNotification `json:"desktop"`
-	Email   EmailNotification   `json:"email"`
-	Discord WebhookNotification `json:"discord"`
-	Slack   WebhookNotification `json:"slack"`
+	Desktop  DesktopNotification  `json:"desktop"`
+	Email    EmailNotification    `json:"email"`
+	Discord  WebhookNotification  `json:"discord"`
+	Slack    WebhookNotification  `json:"slack"`
+	Telegram TelegramNotification `json:"telegram,omitempty"` // Phase 5
+}
+
+// TelegramNotification ships in Phase 5. ChatIDs is a list so the same
+// alert can fan-out to multiple channels (e.g. on-call channel + a
+// noisy "all alerts" room). BotToken is plaintext until the Phase 6
+// vault lands — operators are expected to file-mode 0600 the config.
+type TelegramNotification struct {
+	Enabled  bool     `json:"enabled"`
+	BotToken string   `json:"botToken,omitempty"`
+	ChatIDs  []string `json:"chatIds,omitempty"`
 }
 
 type DesktopNotification struct {
